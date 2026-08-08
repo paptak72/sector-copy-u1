@@ -44,9 +44,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           NOTES="Automatycznie zbudowany i przetestowany plik XEX z commitu ${GITHUB_SHA}."
+
+          # Stały adres pobierania wymaga stałego tagu, ale tag ma wskazywać
+          # dokładnie commit, z którego pochodzi aktualnie publikowany XEX.
+          git tag --force continuous "${GITHUB_SHA}"
+          git push --force origin refs/tags/continuous
+
           if gh release view continuous --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
             gh release edit continuous \
               --repo "${GITHUB_REPOSITORY}" \
+              --target "${GITHUB_SHA}" \
               --title "Najnowsza gotowa wersja" \
               --notes "${NOTES}" \
               --latest
