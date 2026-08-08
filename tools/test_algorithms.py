@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Host-side invariants for the 6502 copier algorithms."""
+"""Niezmienniki algorytmow kopiera 6502 sprawdzane na komputerze gospodarza."""
 
 from pathlib import Path
 import hashlib
@@ -176,8 +176,8 @@ bad_track = bytearray(track18)
 bad_track[20] = 0
 assert not hyperxf_track_valid(bad_track, 18)
 
-# The frame owns columns 0 and 39, so every individual screen literal must fit
-# within the 38-column text area between them.
+# Ramka zajmuje kolumny 0 i 39, dlatego kazdy tekst ekranowy musi miescic sie
+# w 38-kolumnowym obszarze pomiedzy nimi.
 main_source = (Path(__file__).parents[1] / "src" / "main.s").read_text()
 memory_source = (Path(__file__).parents[1] / "src" / "memory.s").read_text()
 for line_number, line in enumerate(main_source.splitlines(), 1):
@@ -186,8 +186,8 @@ for line_number, line in enumerate(main_source.splitlines(), 1):
             f"main.s:{line_number}: {len(literal)} columns: {literal!r}"
         )
 
-# The QMEG-inspired raw view maps all 256 ATASCII values, including control,
-# semigraphic and inverse ranges, to the corresponding GR.0 screen code.
+# Surowy podglad sektora odwzorowuje wszystkie 256 wartosci ATASCII, lacznie
+# ze znakami sterujacymi, semigrafika i negatywem, na kody ekranowe GR.0.
 def atascii_to_screen(value: int) -> int:
     if value < 0x20 or 0x80 <= value < 0xA0:
         return value + 0x40
@@ -221,8 +221,8 @@ assert "jsr ui_set_cursor\n    lda copy_current_hi" not in main_source
 assert "PROGRESS_DATA_COL   = 4" in main_source
 assert ".byte 4, 8, 16" in main_source
 
-# Menu input must use the unbuffered K: handler on IOCB #1, never line input
-# from the E: output channel. Stockowy glif $7C daje wycentrowany pion ramki
+# Menu musi uzywac niebuforowanej procedury K: w IOCB #1, a nie wejscia
+# wierszowego z kanalu E:. Stockowy glif $7C daje wycentrowany pion ramki
 # juz na pierwszym ekranie i nie wymaga niszczacej kopii fontu pod $A000.
 ui_source = (Path(__file__).parents[1] / "src" / "ui.s").read_text()
 assert '.byte "K:", 0' in ui_source
@@ -243,9 +243,9 @@ assert ".proc ui_wait_start_select" in ui_source
 assert "lda CONSOL\n    and #$07" in ui_source
 assert "cmp #$06" in ui_source and "cmp #$05" in ui_source
 
-# Every post-read media prompt starts from a clean framed screen.  Once a
-# complete chunk is buffered, target/format/write/verify failures offer a
-# direct rewrite path that never calls copy_read_all again.
+# Kazde pytanie o nosnik po odczycie zaczyna sie na czystym ekranie z ramka.
+# Po zbuforowaniu pelnej porcji bledy celu, formatu, zapisu lub weryfikacji
+# udostepniaja ponowny zapis bez kolejnego wywolania copy_read_all.
 assert main_source.count("jsr begin_media_prompt") == 3
 assert "read_disk:\n    jsr ui_begin_screen\n    jsr ui_colors_read" in main_source
 assert "write_disk:\n    jsr ui_begin_screen\n    jsr ui_colors_write" in main_source
@@ -258,9 +258,9 @@ retry_end = main_source.index('.segment "CODE"', retry_start)
 assert "copy_read_all" not in main_source[retry_start:retry_end]
 assert main_source.count("jmp target_retry_error") >= 6
 
-# A full one-pass image remains reusable after write and compare. START writes
-# another target without copy_read_all; SELECT returns. Multi-pass must not
-# expose this path because only its final chunk remains buffered.
+# Pelny obraz jednoprzebiegowy pozostaje dostepny po zapisie i porownaniu.
+# START zapisuje kolejny cel bez copy_read_all, a SELECT wraca. Przy wielu
+# przebiegach opcja jest ukryta, bo bufor zawiera tylko ostatnia porcje.
 success_start = main_source.index("success_wait:")
 success_end = main_source.index("success_return:", success_start)
 success_path = main_source[success_start:success_end]
@@ -271,9 +271,8 @@ assert "jmp check_preformatted" in success_path
 assert "jmp format_target" in success_path
 assert "copy_read_all" not in success_path
 
-# Wariant B glownego menu ma dwa osobne panele stacji. Testujemy nazwy
-# procedur i kluczowe napisy, aby przypadkowe cofniecie do dawnej listy D1-D8
-# albo znikniecie duzego pola C bylo widoczne juz podczas `make test`.
+# Glowne menu ma dwa osobne panele stacji. Asercje obejmuja procedury wyboru,
+# kluczowe etykiety oraz komplet skrotow klawiaturowych obu paneli.
 assert 'title:\n    .byte "SECTOR COPY U1 0.6.6"' in main_source
 assert '.byte "             Paptak 2026", 0' in main_source
 assert ".proc draw_panel_box" in main_source
@@ -322,10 +321,9 @@ assert ".proc ensure_detected_drive" in main_source
 assert "inc source_drive" not in main_source
 assert "inc target_drive" not in main_source
 
-# A drive that can accept SET PERCOM/FORMAT may still be unable to report its
-# new geometry (the real FujiNet/SIO setup in the hardware test does this).
-# Successful formatting therefore goes straight to target_ready; geometry is
-# still checked when FORMAT: NIE is selected.
+# Stacja przyjmujaca SET PERCOM i FORMAT nie musi umiec zwrotnie podac nowej
+# geometrii przez GET PERCOM. Udane formatowanie ustanawia geometrie zrodla;
+# opcja FORMAT: NIE nadal wymaga jej jawnego sprawdzenia.
 assert "jsr copy_format_target\n    bcc format_complete" in main_source
 format_complete = main_source.index("format_complete:")
 target_ready = main_source.index("target_ready:", format_complete)
@@ -347,9 +345,9 @@ assert "bpl copy_byte" in buffer_source
 assert ".proc advance_data" not in buffer_source
 assert ".proc decrement_length" not in buffer_source
 
-# Rzeczywiste transfery musza isc przez niezalezny sterownik POKEY. Samo
-# wyslanie $3F, a nastepnie uzycie SIOV dla sektorow bylo przyczyna wolnej
-# pracy HyperXF w wersji testowanej na prawdziwym Atari.
+# Wszystkie transfery musza przechodzic przez niezalezny sterownik POKEY.
+# Wykrycie dzielnika przez $3F nie wystarcza, jesli operacje sektorowe uzywaja
+# pozniej standardowego SIOV.
 root = Path(__file__).parents[1]
 sio_source = (root / "src" / "sio.s").read_text()
 geometry_source = (root / "src" / "geometry.s").read_text()

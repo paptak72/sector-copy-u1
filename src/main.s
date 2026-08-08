@@ -7,7 +7,7 @@
 ; Punkt RUNAD prowadzi do start. Najpierw zapisywane jest srodowisko programu
 ; wywolujacego, potem uzytkownik wybiera pelne przejecie komputera albo tryb
 ; zachowania DOS-u. Od initialize kod nie zalezy juz od tego, czy XEX wczytal
-; SpartaDOS X, inny DOS, czy prosty loader.
+; SpartaDOS X, inny DOS, czy prosty program ladujacy.
 ;
 ; Glowne stany operacji K:
 ;
@@ -19,7 +19,7 @@
 ; do odczytu. Bledy celu prowadza do target_retry_error, skad R ponawia zapis,
 ; a F ponawia format i zapis bez dotykania dyskietki zrodlowej. Ma to znaczenie
 ; przy jednej stacji i wieloprzebiegowej kopii: udany odczyt starego nosnika
-; nie jest tracony z powodu write-protect albo wadliwej dyskietki docelowej.
+; nie jest tracony z powodu ochrony zapisu albo wadliwej dyskietki docelowej.
 ;
 ; Ten modul zawiera rowniez ekran glowny i wizualizacje sektora, bo ich stan
 ; jest scisle zwiazany z przebiegiem kopiowania. Niskopoziomowe CIO/kolory sa
@@ -140,8 +140,8 @@ TRACK_BAR_OFFSET    = 3
 DISK_LABEL_OFFSET   = 40
 DISK_BAR_OFFSET     = 43
 SCREEN_HLINE        = $52
-; Zaokraglony segment semigraficzny. Poprzednie inverse-space $80 tworzylo
-; ciezkie, zlewajace sie prostokaty wysokie na caly wiersz znakowy.
+; Kod $54 tworzy waski, zaokraglony segment semigraficzny. Oddzielne komorki
+; zachowuja czytelna podzialke obu paskow postepu.
 SCREEN_PROGRESS     = $54
 SCREEN_BOX_TL       = $51
 SCREEN_BOX_TR       = $45
@@ -210,8 +210,9 @@ kb_label:
 sectors_short_label:
     .byte " S", 0
 
-; Stale teksty paneli zajmuja zachowywany obszar $3600-$37FF. Pozwala to rozbudowac
-; opis formatu bez wejscia programu w obszar BASIC/kartridza od $A000.
+; Stale teksty paneli zajmuja zachowywany obszar $3600-$37FF. Pozwala to
+; rozbudowac opis formatu bez wejscia programu w obszar BASIC/kartridza od
+; $A000.
 .segment "AUXCODE"
 offline_label:
     .byte "BRAK STACJI", 0
@@ -372,11 +373,10 @@ progress_offset_hi:
     .byte >(8*40+PROGRESS_DATA_COL)
     .byte >(4*40+PROGRESS_DATA_COL)
 
-; Pelna tablica ATASCII -> kod ekranowy GR.0. Poprzednia wersja wykonywala do
-; pieciu porownan i kilka skokow dla kazdego z 256 bajtow sektora. Na fizycznej
-; HyperXF ta pauza wystarczala, aby minac nastepny sektor w przeplocie US9 i
-; czekac caly obrot. Odczyt indeksowany zachowuje identyczny wyglad wszystkich
-; znakow kontrolnych, semigrafiki i inverse przy znacznie krotszej petli.
+; Pelna tablica ATASCII -> kod ekranowy GR.0. Odczyt indeksowany obsluguje
+; jednakowo znaki kontrolne, semigrafike oraz negatyw i ma staly czas dla
+; kazdego bajtu. Ogranicza to koszt wizualizacji, aby obsluga ekranu miescila
+; sie w czasie miedzy sektorami wynikajacym z przeplotu HyperXF UltraSpeed.
 atascii_screen_table:
     .byte $40,$41,$42,$43,$44,$45,$46,$47,$48,$49,$4A,$4B,$4C,$4D,$4E,$4F
     .byte $50,$51,$52,$53,$54,$55,$56,$57,$58,$59,$5A,$5B,$5C,$5D,$5E,$5F
@@ -440,7 +440,7 @@ copy_error_help:
     rts
 
 select_full:
-    ; Full mode intentionally abandons the loader's return stack.
+    ; Tryb pelny swiadomie porzuca stos powrotu do programu ladujacego.
     sei
     ldx #$FF
     txs
@@ -549,7 +549,7 @@ cold_restart:
     jmp COLDSV
 .endproc
 
-; Returns A=1 for full takeover, A=2 for DOS-safe mode, A=0 for return.
+; Wyjscie: A=1 tryb pelny, A=2 zachowanie DOS-u, A=0 powrot do wywolujacego.
 .proc choose_launch_mode
 redraw:
     jsr ui_begin_screen
@@ -691,11 +691,10 @@ present:
 ; numer 1..18 (SD/DD) albo 1..26 (MD), a bity 7..5 opisuja stan. Dopuszczamy
 ; tylko $00 (poprawny/pusty) i $E0 (poprawny/niepusty). W odpowiedzi moga
 ; wystapic wpisy $C0 opisujace fizyczne odstepy miedzy sektorami. Nie sa one
-; sektorami ani bledami i trzeba je pominac; poprzedni walidator odrzucal przez
-; to kazda poprawna sciezke HyperXF jako 40T/1S. Cztery pierwsze bajty bufora,
-; ktore nie sa juz potrzebne po odpowiedzi $67, sluza jako 32-bitowa mapa
-; wykrytych numerow. Wymaganie dokladnie jednego kompletu eliminuje przypadkowe
-; uznanie pojedynczego starego naglowka za cala strone dyskietki.
+; sektorami ani bledami i sa pomijane. Cztery pierwsze bajty bufora, ktore nie
+; sa juz potrzebne po odpowiedzi $67, sluza jako 32-bitowa mapa wykrytych
+; numerow. Wymaganie dokladnie jednego kompletu eliminuje duplikaty oraz
+; przypadkowe uznanie pojedynczego starego naglowka za cala strone dyskietki.
 ;
 ; Wyjscie: C=0 kompletna sciezka, C=1 odpowiedz niepelna lub uszkodzona.
 .proc hyperxf_track_valid
@@ -777,8 +776,8 @@ received:
     jmp hyperxf_track_valid
 .endproc
 
-; A = drive unit. Probes one drive and updates its geometry record.
-; Carry clear on success, set when STATUS did not answer.
+; Wejscie: A = numer stacji. Bada urzadzenie i aktualizuje jego geometrie.
+; Wyjscie: C=0 sukces, C=1 brak odpowiedzi na STATUS.
 .proc probe_drive
     sta scan_index
 
@@ -794,11 +793,10 @@ received:
     jmp failed
 status_ok:
 
-    ; Standardowy GET PERCOM zwykle opisuje nosnik w urzadzeniu wirtualnym.
-    ; W HyperXF komenda N/$4E zwraca jednak OSTATNI blok ustawiony komenda O,
-    ; a nie rozmiar wlozonej dyskietki. To bylo przyczyna sytuacji, w ktorej
-    ; zapis obrazu $0B40 sektorow przebiegal do konca, lecz pozniejszy odczyt
-    ; tej samej fizycznej dyskietki byl blednie obcinany do 720 sektorow.
+    ; Standardowy GET PERCOM zwykle opisuje aktualny nosnik. W HyperXF komenda
+    ; N/$4E zwraca jednak ostatni blok ustawiony komenda O, a nie fizyczny
+    ; rozmiar wlozonej dyskietki. Sygnatura $D9 kieruje wiec program do
+    ; aktywnego badania gestosci i skrajnych sciezek zamiast uzycia PERCOM.
     lda sio_status_buf+2
     cmp #$D9
     bne probe_standard
@@ -867,7 +865,7 @@ hyperxf_name:
     lda #5
     sta geo_speed_kind,x
 
-    ; Fallback ustawil juz 40T/1S. HyperXF zna geometrie ustawiona przez O,
+    ; Profil awaryjny ustawil juz 40T/1S. HyperXF zna geometrie ustawiona przez O,
     ; dlatego oznaczenie P nie pochodzi tutaj z GET PERCOM, lecz z ponizszego
     ; aktywnego badania nosnika. Nawet profil 40T/1S jest bezpieczny do SET
     ; PERCOM podczas formatowania, bo gestosc pochodzi ze swiezego STATUS U.
@@ -1136,7 +1134,7 @@ not_present:
     jmp ui_print_z
 .endproc
 
-; Draws a fixed 17x8 inner panel at row 3. X = left column.
+; Rysuje wewnetrzny panel 17x8 od wiersza 3. Wejscie: X = lewa kolumna.
 .proc draw_panel_box
     stx scan_index
     lda SAVMSC
@@ -1645,7 +1643,7 @@ target_already_initialized:
     cmp target_drive
     bne write_disk
 
-    ; A single physical drive needs another target swap for every chunk.
+    ; Jedna fizyczna stacja wymaga ponownej zmiany na cel dla kazdej porcji.
     jsr begin_media_prompt
     lda #<copy_insert_target
     ldy #>copy_insert_target
@@ -1703,7 +1701,7 @@ chunk_complete:
     jmp read_disk
 
 source_swap:
-    ; Put the source disk back before reading the next chunk.
+    ; Przed odczytem nastepnej porcji trzeba ponownie wlozyc dysk zrodlowy.
     jsr begin_media_prompt
     lda #<copy_insert_source_next
     ldy #>copy_insert_source_next
@@ -1822,8 +1820,9 @@ retry_write:
 
 ; Po FORMAT ostatnia wartosc MYSPEED dotyczy wlasnie rozkazu $21/$22. Dla
 ; rozpoznanego HyperXF pokazujemy zatem nie zalozony profil, lecz tryb faktycznie
-; uzyty po wszystkich retry. Firmware wybiera Ultra-Speed Sector Skew tylko
-; wtedy, gdy sama komenda formatowania nadeszla szybko.
+; uzyty po wszystkich ponowieniach. Oprogramowanie stacji wybiera przeplot
+; sektorow UltraSpeed tylko wtedy, gdy sama komenda formatowania nadeszla
+; szybko.
 .proc print_hyperxf_format_mode
     ldx target_drive
     dex
@@ -1845,9 +1844,9 @@ done:
 .endproc
 
 .proc print_separator
-    ; Keep one column before RMARGN free.  Filling the complete logical line
-    ; makes E: perform its automatic wrap and prepare the bottom editor row,
-    ; which would erase the lower semigraphics border.
+    ; Zostaw jedna kolumne przed RMARGN. Wypelnienie calego logicznego wiersza
+    ; uruchamia automatyczne zawijanie E: i przygotowanie dolnego wiersza
+    ; edytora, co usuneloby dolna krawedz ramki semigraficznej.
     lda #37
     sta scan_index
 loop:
@@ -2022,8 +2021,9 @@ confirm_verify_done:
 
     ; MYSPEED=$28 (40) oznacza, ze konkretna operacja zakonczyla sie w trybie
     ; standardowym. Kazda inna wartosc to aktywna rodzina turbo. Ten wskaznik
-    ; ujawnia cichy fallback sterownika, ktorego sam napis HXF9/US9 w menu nie
-    ; potrafi rozpoznac. Kody znakow sa kodami ekranowymi, nie ATASCII.
+    ; ujawnia cichy powrot sterownika do standardu, ktorego sam napis HXF9/US9
+    ; w menu nie potrafi rozpoznac. Kody znakow sa kodami ekranowymi, nie
+    ; ATASCII.
     ldy #PROGRESS_SPEED_COL-PROGRESS_NUMBER_COL
     lda sio_actual_mode
     cmp #40
@@ -2084,7 +2084,7 @@ update_whole_disk:
 ; Dolny pasek narasta przez cala dyskietke. Dzielnik jest wyliczany raz na
 ; ekran jako ceil(total/32); w goracej petli wykonujemy tylko inkrementacje i
 ; jedno porownanie, aby wizualizacja nie psula przeplotu szybkiej HyperXF.
-; Procedura lezy w UICODE, w miejscu zwolnionym przez zbedna kopie fontu RAM.
+; Procedura lezy w UICODE ponizej wspolnego bufora sektorowego $3E00.
 .segment "UICODE"
 .proc update_disk_progress
     lda progress_disk_cell
@@ -2136,8 +2136,9 @@ done:
     ldy #>progress_sio_label
     jsr ui_print_z
 
-    ; QMEG-inspired stage band: the operation name occupies a quiet inverse
-    ; strip, while the raw sector contents remain the visual focus.
+    ; Nazwa etapu zajmuje jednolity pasek w negatywie, a zawartosc sektora
+    ; pozostaje glownym elementem wizualizacji. Modyfikujemy bezposrednio kody
+    ; ekranowe.
     lda SAVMSC
     clc
     adc #<(2*40+1)
@@ -2201,7 +2202,7 @@ clear_disk:
     cpy #DISK_BAR_OFFSET-1
     bne clear_disk
 
-    ; S = biezaca sciezka, D = cala dyskietka. Litery sa w inverse, aby
+    ; S = biezaca sciezka, D = cala dyskietka. Litery sa w negatywie, aby
     ; jednoznacznie odcinac etykiete od cienkiej linii pustej czesci paska.
     ldy #0
     lda #('S'-$20)|$80
@@ -2240,9 +2241,8 @@ clear_disk:
 
     ; Przy porcji zaczynajacej sie w srodku sciezki odtworz stan paska przez
     ; wykonanie skalera dla zakonczonych juz sektorow. Jawne LDA przed BEQ jest
-    ; krytyczne: STA nie zmienia flag 6502. W 0.6.3 testowana byla przypadkowa
-    ; flaga Z po dzieleniu, wskutek czego Y zawijal sie i 256 blokow niszczylo
-    ; etykiety, drugi pasek oraz dolna ramke ekranu.
+    ; konieczne, poniewaz STA nie zmienia flag 6502, a flaga Z pozostawiona
+    ; przez dzielenie nie opisuje zapisanej pozycji paska.
     lda progress_track_pos
     beq done
     tax
@@ -2266,7 +2266,7 @@ done:
 next_cell:
     cmp progress_track_spt
     bcc save_remainder
-    ; CMP ustawilo carry, wiec SBC wykonuje zwykle odejmowanie bez pozyczki.
+    ; CMP ustawilo znacznik C, wiec SBC odejmuje bez pozyczki.
     sbc progress_track_spt
     pha
     ldy progress_track_cell
@@ -2357,7 +2357,7 @@ byte_loop:
 .proc nibble_to_screen
     cmp #10
     bcc decimal_digit
-    ; Po CMP carry=1: 10+$16+1=$21, czyli kod ekranowy litery A.
+    ; Po CMP znacznik C=1: 10+$16+1=$21, czyli kod ekranowy litery A.
     adc #$16
     rts
 decimal_digit:
@@ -2365,7 +2365,7 @@ decimal_digit:
     rts
 .endproc
 
-; Prints A as two hexadecimal digits.
+; Wyswietla A jako dwie cyfry szesnastkowe.
 .proc print_hex
     pha
     lsr

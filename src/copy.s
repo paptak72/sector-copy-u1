@@ -137,9 +137,9 @@ copy_sector_units:    .res 1
 
 .segment "CODE"
 
-; Validates both selected drives, geometry and buffer capacity.
-; copy_source/copy_target must contain unit numbers 1..8.
-; Carry clear on success, set on failure; copy_error_kind gives the reason.
+; Sprawdza obie wybrane stacje, geometrie zrodla i pojemnosc bufora.
+; copy_source/copy_target musza zawierac numery jednostek 1..8.
+; Wyjscie: C=0 sukces, C=1 blad opisany przez copy_error_kind.
 .proc copy_prepare
     lda #COPY_OK
     sta copy_error_kind
@@ -236,9 +236,9 @@ fail:
     rts
 .endproc
 
-; Starts a sector-aligned sequence of buffer-sized passes. One 16K bank is
-; enough to copy any supported geometry, although a one-drive copy then
-; requires a disk swap between every chunk.
+; Rozpoczyna ciag przebiegow dopasowanych do pojemnosci bufora i granic
+; sektorow. Jeden bank 16 KB wystarcza dla kazdej obslugiwanej geometrii,
+; lecz przy jednej stacji wymaga wymiany dyskietki miedzy porcjami.
 .proc copy_begin_chunks
     lda #1
     sta copy_chunk_start_lo
@@ -248,7 +248,7 @@ fail:
     jmp calculate_chunk_end
 .endproc
 
-; Advances to the next chunk. Carry set means the whole disk is complete.
+; Przechodzi do nastepnej porcji. C=1 oznacza zakonczenie calej dyskietki.
 .proc copy_advance_chunk
     lda copy_chunk_end_lo
     cmp copy_total_lo
@@ -273,8 +273,8 @@ finished:
     rts
 .endproc
 
-; Calculates the largest complete-sector range which fits in all currently
-; usable 16K banks. Capacity and use are expressed in 128-byte units.
+; Wyznacza najwiekszy zakres pelnych sektorow mieszczacy sie we wszystkich
+; dostepnych bankach 16 KB. Pojemnosc i zuzycie sa liczone w blokach 128 B.
 .proc calculate_chunk_end
     lda mem_buffer_units_lo
     sta copy_capacity_lo
@@ -360,8 +360,8 @@ save:
     rts
 .endproc
 
-; Configures and formats the target to match the source geometry snapshot.
-; Carry clear on success. This is the only operation here which erases media.
+; Konfiguruje i formatuje cel wedlug zapamietanej geometrii zrodla.
+; Wyjscie: C=0 sukces. Jest to jedyna procedura w module kasujaca nosnik.
 .proc copy_format_target
     lda copy_percom_ok
     beq choose_format_command
@@ -438,8 +438,8 @@ formatted:
     rts
 .endproc
 
-; Rechecks the target after the user has inserted or confirmed the destination
-; disk. The source geometry snapshot from copy_prepare remains intact.
+; Ponownie sprawdza cel po wlozeniu lub potwierdzeniu dyskietki docelowej.
+; Migawka geometrii zrodla utworzona przez copy_prepare pozostaje niezmieniona.
 .proc copy_validate_target
     ldx copy_target_index
     lda geo_present,x
@@ -470,7 +470,8 @@ fail:
     rts
 .endproc
 
-; Rechecks the source after a disk swap in a single-drive, multi-pass copy.
+; Ponownie sprawdza zrodlo po wymianie nosnika w kopii wieloprzebiegowej
+; wykonywanej przy uzyciu jednej stacji.
 .proc copy_validate_source
     ldx copy_source_index
     lda geo_present,x
@@ -501,7 +502,7 @@ fail:
     rts
 .endproc
 
-; Reads the current source chunk into the available buffer.
+; Odczytuje biezaca porcje zrodla do dostepnego bufora.
 .proc copy_read_all
     jsr begin_transfer
 sector_loop:
@@ -530,7 +531,7 @@ stored:
     rts
 .endproc
 
-; Writes the current buffered chunk using verified-write $57.
+; Zapisuje biezaca porcje z bufora komenda $57 z weryfikacja stacji.
 .proc copy_write_all
     jsr begin_transfer
 sector_loop:
@@ -559,7 +560,7 @@ written:
     rts
 .endproc
 
-; Reads the current target chunk and compares it with the buffered source.
+; Odczytuje biezaca porcje celu i porownuje ja ze zrodlem w buforze.
 .proc copy_verify_all
     jsr begin_transfer
 sector_loop:
@@ -596,8 +597,8 @@ verified:
     jmp buffer_reset
 .endproc
 
-; Sets sector and length variables. Atari boot sectors 1-3 are always 128
-; bytes, also on 256/512-byte media.
+; Ustawia numer i dlugosc sektora. Sektory startowe Atari 1..3 maja zawsze
+; 128 bajtow, rowniez na nosnikach o sektorach 256 lub 512 bajtow.
 .proc set_sector_length
     lda copy_current_lo
     sta sio_sector_lo
@@ -620,7 +621,7 @@ normal_length:
     rts
 .endproc
 
-; Carry set when the last sector has just completed.
+; C=1, gdy zakonczono ostatni sektor calej dyskietki.
 .proc progress_and_next
     jsr copy_ui_progress
     lda copy_current_lo
@@ -651,7 +652,7 @@ finished:
     cmp #1
     beq twice
 
-    ; 512 byte sectors: units = total*4 - 9 because sectors 1-3 use 128.
+    ; Sektory 512 B: jednostki = total*4-9, bo sektory 1..3 maja po 128 B.
     asl copy_units_lo
     rol copy_units_hi
     asl copy_units_lo
@@ -666,7 +667,7 @@ finished:
     jmp units_ready
 
 twice:
-    ; 256 byte sectors: units = total*2 - 3.
+    ; Sektory 256 B: jednostki = total*2-3.
     asl copy_units_lo
     rol copy_units_hi
     lda copy_units_lo
@@ -683,7 +684,7 @@ units_ready:
     lda copy_units_hi
     sta copy_required_units_hi
 
-    ; Required slots = ceil(128-byte units / 128).
+    ; Wymagane banki = ceil(liczba blokow 128 B / 128).
     lda copy_units_lo
     clc
     adc #127
@@ -707,7 +708,7 @@ shift:
     lda sio_result
     sta copy_error_status
     pla
-    ; fall through
+    ; Przejscie bezposrednio do nastepnej galezi.
 .endproc
 
 .proc remember_error

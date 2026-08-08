@@ -64,9 +64,9 @@ buffer_len_hi:    .res 1
 ; Wejscie: dlugosc w sio_length_*, kursor ustawiony na poczatek sektora.
 ; Wyjscie: C=0 wszystkie bajty rowne, C=1 roznica lub koniec pamieci.
 ;
-; Kursor przesuwa sie tak samo jak w buffer_load, ale nie potrzebujemy drugiego
-; 512-bajtowego bufora roboczego. Odzyskane miejsce $3E00-$3FFF umozliwilo
-; umieszczenie niezaleznego sterownika HSIO ponizej okna $4000.
+; Kursor przesuwa sie tak samo jak w buffer_load, ale porownanie bezposrednie
+; nie wymaga drugiego bufora 512 B. Jedyny obszar $3E00-$3FFF moze dzieki temu
+; sluzyc wszystkim operacjom sektorowym, a HSIO miesci sie ponizej okna $4000.
 .proc buffer_compare
     lda #<sio_sector_buf
     sta buffer_data_ptr
@@ -84,9 +84,9 @@ buffer_len_hi:    .res 1
 
 compare_block:
     ; Wszystkie obslugiwane sektory i pozycje strumienia sa wyrownane do 128 B.
-    ; Kopiujemy zatem pol strony petla Y=0..127. Stara petla wywolywala trzy
-    ; podprocedury DLA KAZDEGO bajtu (ok. 13-14 ms na 256 B); tutaj ten narzut
-    ; wystepuje tylko dwa razy na sektor, co jest kluczowe dla skewa HyperXF.
+    ; Kopiowanie pol strony petla Y=0..127 ogranicza przelaczanie bankow oraz
+    ; aktualizacje 16-bitowych licznikow do jednego razu na blok. Krotki czas
+    ; obslugi sektora pozwala zachowac okno wynikajace z przeplotu HyperXF.
     ldy #0
 compare_byte:
     lda (buffer_win_ptr),y
@@ -276,7 +276,7 @@ unavailable:
 
 .proc decrement_block
     ; Dlugosci 128/256/512 sa wielokrotnosciami 128, wiec jedno 16-bitowe
-    ; odejmowanie zastepuje 128 wywolan dawnego decrement_length.
+    ; odejmowanie aktualizuje licznik calego przetworzonego bloku.
     lda buffer_len_lo
     sec
     sbc #128

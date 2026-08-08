@@ -1,4 +1,4 @@
-; Atari XL/XE OS and hardware symbols used by Sector Copy U1.
+; Symbole systemu i sprzetu Atari XL/XE uzywane przez Sector Copy U1.
 
 DOSVEC  = $000A
 APPMHI  = $000E
@@ -60,7 +60,7 @@ COLDSV  = $E477
 
 PORTB   = $D301
 ; Rejestr klawiszy konsoli. Bity sa aktywne zerem: bit 0 START, bit 1 SELECT,
-; bit 2 OPTION. Klawisze te nie trafiaja do handlera K:, dlatego potwierdzenia
+; bit 2 OPTION. Klawisze te nie trafiaja do procedury K:, dlatego potwierdzenia
 ; operacji destrukcyjnych musza czytac CONSOL bezposrednio.
 CONSOL  = $D01F
 V_SETME = $07F1

@@ -5,8 +5,8 @@
 ; ---------------------------------------------------------------------------
 ;
 ; Kazda tablica ma 8 pozycji: indeks 0 opisuje D1:, indeks 7 D8:.
-; Rozdzielenie danych na tablice (structure of arrays) jest na 6502 mniejsze
-; i szybsze niz mnozenie indeksu przez rozmiar struktury.
+; Rozdzielenie danych na osobne tablice pol jest na 6502 mniejsze i szybsze
+; niz mnozenie indeksu przez rozmiar struktury.
 ;
 ; Geometria zwyklych stacji pochodzi najpierw z GET PERCOM ($4E). Gdy starsza
 ; stacja nie zna PERCOM, geo_set_fallback interpretuje pierwszy bajt STATUS i
@@ -170,7 +170,7 @@ calculate:
     ora sio_percom_buf+3
     beq invalid
 
-    ; Accept sector sizes 128, 256 and 512 bytes.
+    ; Akceptowane rozmiary sektora: 128, 256 i 512 bajtow.
     lda sio_percom_buf+6
     beq check_128
     cmp #1
@@ -239,8 +239,8 @@ invalid:
     cmp #$80
     beq turbo
     ; Wszystkie pozostale legalne wartosci sa dzielnikami UltraSpeed.
-    ; Nie wolno tu testowac BMI po CMP #$41: dla A=$80 odejmowanie daje $3F
-    ; i kasuje znacznik N, przez co profil 1050 Turbo bylby pokazany jako US128.
+    ; Porownanie musi byc bezposrednie: po CMP #$41 wartosc $80 daje wynik $3F
+    ; i wyzerowany znacznik N, dlatego BMI nie rozpoznaloby kodu 1050 Turbo.
     sta geo_speed_div,x
     lda #1
     sta geo_speed_kind,x
@@ -271,7 +271,7 @@ standard:
     rts
 .endproc
 
-; X = drive index. Computes tracks * sectors/track * sides (16-bit).
+; Wejscie: X = indeks stacji. Oblicza 16-bitowe tracks*spt*sides.
 .proc geo_calculate_total
     stx drive_index
     lda #0

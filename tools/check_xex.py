@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Small structural validator for Atari segmented XEX files."""
+"""Sprawdza strukture segmentowego pliku XEX dla Atari."""
 
 from __future__ import annotations
 
@@ -67,4 +67,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

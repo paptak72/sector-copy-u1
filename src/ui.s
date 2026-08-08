@@ -1,7 +1,7 @@
 .include "os.inc"
 
 ; ---------------------------------------------------------------------------
-; Interfejs tekstowy oparty na standardowych handlerach E: i K:
+; Interfejs tekstowy oparty na standardowych procedurach obslugi E: i K:
 ; ---------------------------------------------------------------------------
 ;
 ; E: tworzy ekran GRAPHICS 0 i sluzy tylko do wyjscia. Klawiatura jest otwarta
@@ -10,13 +10,13 @@
 ; w buforze po wyborze opcji.
 ;
 ; ui_begin_screen ustawia 40-kolumnowy obszar z marginesami 1..38. Kolumny 0
-; i 39 sa zarezerwowane dla ramki semigraficznej. Pion korzysta ze stockowego
+; i 39 sa zarezerwowane dla ramki semigraficznej. Pion korzysta z systemowego
 ; glifu $7C, ktory ma kreske dokladnie posrodku komorki w ROM-ach XL/XE.
 ;
 ; Teksty zrodlowe sa w ATASCII. Wizualizacja sektorow w main.s zapisuje jednak
 ; kody ekranowe bezposrednio pod SAVMSC, aby nie wykonywac setek wywolan CIO na
-; kazdy sektor. Palety read/write/menu zmieniaja tylko rejestry COLOR*, wiec
-; przejscie zielony->czerwony nie niszczy zawartosci ekranu.
+; kazdy sektor. Palety odczytu, zapisu i menu zmieniaja tylko rejestry COLOR*,
+; wiec przejscie zielony->czerwony nie niszczy zawartosci ekranu.
 
 .export ui_clear
 .export ui_begin_screen
@@ -64,13 +64,13 @@ BOX_TR = $45
 BOX_BL = $5A
 BOX_BR = $43
 BOX_H  = $52
-; $7C = osiem wierszy po $18: pelna pionowa kreska posrodku glifu. Dawne $42
-; mialo bity $03 przy prawej krawedzi i przesuwalo boki pierwszego ekranu.
+; $7C = osiem wierszy po $18: pelna pionowa kreska posrodku glifu. Jej polozenie
+; jest zgodne z pionowymi fragmentami glifow uzytych dla naroznikow ramki.
 BOX_V  = $7C
 
-; GR.0 uses COLOR2's hue/background luminance and COLOR1's low nibble for
-; the text luminance.  This gives a calm navy screen with crisp pale-blue
-; lettering and a darker border on PAL and NTSC machines.
+; GR.0 pobiera odcien i jasnosc tla z COLOR2, a jasnosc tekstu z dolnego
+; polbajtu COLOR1. Ustawienia daja granatowe tlo, jasnoniebieskie litery oraz
+; ciemniejsza ramke na maszynach PAL i NTSC.
 UI_TEXT_LUMA  = $0E
 UI_BACKGROUND = $82
 UI_BORDER     = $80
@@ -109,8 +109,8 @@ VERIFY_BORDER     = $10
     rts
 .endproc
 
-; GR.0 palettes used as an immediate visual cue: navigation is blue, every
-; disk read (including verification) is green, and destructive output is red.
+; Palety GR.0 rozrozniaja etapy operacji: nawigacja jest niebieska, odczyt
+; zielony, a destrukcyjne formatowanie i zapis czerwone.
 .proc ui_colors_menu
     lda #UI_BACKGROUND
     ldx #UI_BORDER
@@ -135,7 +135,7 @@ VERIFY_BORDER     = $10
 .proc ui_colors_verify
     lda #VERIFY_BACKGROUND
     ldx #VERIFY_BORDER
-    ; fall through
+    ; Przejscie bezposrednio do ui_set_stage_palette.
 .endproc
 
 .proc ui_apply_colors
@@ -163,14 +163,14 @@ VERIFY_BORDER     = $10
     jmp ui_print_char
 .endproc
 
-; Clears the 40-column screen and draws a genuine Atari semigraphics frame.
-; Column 0/39 and row 0/23 form the border; text uses columns 1-38.
+; Czysci ekran 40-kolumnowy i rysuje ramke semigraficzna Atari. Kolumny 0/39
+; oraz wiersze 0/23 tworza obramowanie, a tekst zajmuje kolumny 1..38.
 .proc ui_begin_screen
     jsr ui_colors_menu
     jsr ui_clear
-    ; Let E: move its own cursor and cached screen address below the top
-    ; border before direct screen writes.  Merely changing ROWCRS/COLCRS
-    ; leaves OLDADR pointing into the frame, which the next CIO call erases.
+    ; Pozwol E: przesunac jego kursor i zapamietany adres ekranu pod gorna
+    ; ramke przed bezposrednim zapisem. Sama zmiana ROWCRS/COLCRS pozostawia
+    ; OLDADR w ramce, wiec nastepne wywolanie CIO usuneloby jej fragment.
     jsr ui_print_eol
     lda SAVMSC
     sta ui_ptr
@@ -235,7 +235,7 @@ bottom_line:
     rts
 .endproc
 
-; A = row, X = column.
+; Wejscie: A = wiersz, X = kolumna.
 .proc ui_set_cursor
     sta ROWCRS
     stx COLCRS
@@ -249,7 +249,7 @@ bottom_line:
     jmp ui_print_char
 .endproc
 
-; A/Y = address of a zero-terminated ATASCII string.
+; Wejscie: A/Y = mlodszy/starszy bajt adresu lancucha ATASCII zakonczonego 0.
 .proc ui_print_z
     sta ui_ptr
     sty ui_ptr+1
@@ -267,13 +267,13 @@ done:
     rts
 .endproc
 
-; Prints unsigned A in decimal.
+; Wyswietla nieujemna wartosc A w zapisie dziesietnym.
 .proc ui_print_u8
     ldy #0
     jmp ui_print_u16
 .endproc
 
-; Prints unsigned A/Y (low/high) in decimal.
+; Wyswietla nieujemna wartosc 16-bitowa A/Y (mlodszy/starszy) dziesietnie.
 .proc ui_print_u16
     sta ui_num_lo
     sty ui_num_hi
@@ -331,13 +331,13 @@ advance:
     rts
 .endproc
 
-; Rarely used setup code lives below the two sector buffers, leaving the
-; crowded $8000 application area untouched.
+; Rzadko wykonywany kod inicjalizacji lezy ponizej bufora sektorowego, dzieki
+; czemu nie powieksza ciasnego obszaru aplikacji od $8000.
 .segment "UICODE"
 
-; E: performs line-buffered input and therefore waits for RETURN.  A separate
-; K: IOCB returns each key immediately, which is what an interactive menu
-; needs.  IOCB #1 is independent from E: output on IOCB #0.
+; E: buforuje caly wiersz i czeka na RETURN. Osobna procedura K: zwraca kazdy
+; klawisz natychmiast, czego wymaga interaktywne menu. IOCB #1 dla K: jest
+; niezalezny od wyjscia E: w IOCB #0.
 .proc ui_init_keyboard
     ldx #$10
     lda #CIO_CLOSE
@@ -369,7 +369,8 @@ advance:
 .endproc
 
 ; Interaktywne pomocniki sa w obszarze glownego kodu. UICODE pod $3D0A jest
-; ograniczony do bajtu przed buforem $3E00 i zawiera tylko rzadki setup CIO.
+; ograniczony do bajtu przed buforem $3E00 i zawiera tylko rzadka inicjalizacje
+; CIO.
 .segment "CODE"
 
 ; Wersja dla menu: K: zwraca natychmiast pojedynczy znak, a male litery sa
@@ -425,8 +426,8 @@ accepted:
 
 .segment "UICODE"
 
-; Keep notices visible for at least one PAL second (slightly less on NTSC).
-; Subtraction makes the test safe when RTCLOK's low byte wraps at $FF.
+; Utrzymuj komunikat co najmniej przez jedna sekunde PAL (nieco krocej w NTSC).
+; Odejmowanie zapewnia poprawny pomiar po zawinieciu mlodszego bajtu RTCLOK.
 .proc ui_delay_notice
     lda RTCLOK+2
     sta ui_tick_start
@@ -439,9 +440,9 @@ wait_tick:
     rts
 .endproc
 
-; Informational and error screens must not be dismissed by the RETURN that
-; selected the preceding action.  Delay, discard an old keyboard shadow, and
-; then wait for a genuinely subsequent K: event.
+; Ekranu informacji lub bledu nie moze zamknac RETURN pozostaly po poprzedniej
+; czynnosci. Odczekaj minimalny czas, wyczysc cien klawiatury i dopiero potem
+; przyjmij nowe zdarzenie z K:.
 .proc ui_wait_key
     jsr ui_delay_notice
     lda #$FF

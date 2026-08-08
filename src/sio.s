@@ -9,13 +9,11 @@
 ; znac numerow komend stacji ani ukladu pol DCB: podaja jedynie numer stacji,
 ; numer sektora i dlugosc danych.
 ;
-; Wazna roznica wzgledem pierwszych wersji programu: gotowy DCB NIE trafia do
-; systemowego wektora SIOV ($E459).  sio_finish wywoluje hsio_auto, czyli
-; niezalezny sterownik POKEY dolaczony w hsio_blob.s.  Dzieki temu szybkosc nie
-; zalezy od ROM-u Atari, QMEG-a, Ultimate 1MB ani sterownika zainstalowanego
-; przez DOS.  Przy pierwszym rozkazie dla danej Dn: sterownik sam rozpoznaje
-; rodzine protokolu, zapamietuje wynik, a przy bledzie potrafi wrocic do
-; standardowego SIO.
+; Gotowy DCB nie trafia do systemowego wektora SIOV ($E459). sio_finish wywoluje
+; hsio_auto, czyli niezalezny sterownik POKEY dolaczony w hsio_blob.s. Dzieki
+; temu szybkosc nie zalezy od ROM-u Atari ani sterownika zainstalowanego przez
+; DOS. Przy pierwszym rozkazie dla danej Dn: sterownik rozpoznaje rodzine
+; protokolu, zapamietuje wynik, a przy bledzie moze wrocic do standardowego SIO.
 ;
 ; Konwencja wszystkich publicznych procedur:
 ;   wejscie: A = numer stacji 1..8;
@@ -87,14 +85,14 @@ sio_sector_buf:  .res 512
 ; bledu (np. timeout/NACK). Kopia w sio_result pozwala pokazac ten kod pozniej,
 ; kiedy DCB zostal juz przygotowany do nastepnej operacji.
 .proc sio_finish
-    ; Always use the program's own POKEY driver.  It actively negotiates the
-    ; drive profile and contains its own retry plus standard-speed fallback,
-    ; so behavior does not depend on QMEG, Ultimate BIOS or another OS patch.
+    ; Zawsze uzywaj dolaczonego sterownika POKEY. Aktywnie negocjuje profil
+    ; stacji, ma wlasne ponowienia oraz powrot do predkosci standardowej, wiec
+    ; dzialanie nie zalezy od poprawek SIO w ROM-ie systemowym.
     jsr hsio_auto
     ; Profil wykryty dla Dn: nie dowodzi jeszcze, ze konkretny sektor przeszedl
     ; szybko: po bledach sterownik moze ponowic go standardowo. Kopia MYSPEED
     ; zasila wskaznik FAST/STD na ekranie i pozwala odroznic opoznienie obrotowe
-    ; od rzeczywistego fallbacku protokolu.
+    ; od rzeczywistego powrotu protokolu do predkosci standardowej.
     lda $3A
     sta sio_actual_mode
     ldy DSTATS
@@ -155,15 +153,15 @@ unknown:
     jmp sio_status_finish
 .endproc
 
-; HyperXF without a door/disk-change sensor can retain the previous density in
-; STATUS. AUX2=$55 ('U') requests an unconditional density check according to
-; Stefan Dorndorff's protocol. This is deliberately a separate entry point:
-; several ordinary drives only understand the classic zeroed AUX bytes.
+; HyperXF bez czujnika klapki lub zmiany dysku moze zachowac w STATUS gestosc
+; poprzedniego nosnika. AUX2=$55 ('U') wymusza sprawdzenie gestosci zgodnie z
+; protokolem Stefana Dorndorffa. Osobny punkt wejscia jest konieczny, poniewaz
+; zwykle stacje rozumieja jedynie klasyczne wyzerowane bajty AUX.
 .proc sio_status_force
     jsr sio_begin
     lda #'U'
     sta DAUX2
-    ; fall through
+    ; Przejscie bezposrednio do sio_status.
 .endproc
 
 .proc sio_status_finish
@@ -184,12 +182,11 @@ unknown:
     jmp sio_finish
 .endproc
 
-; HyperXF GET TRACK INFO ($67), analysis level $20 (sector headers only).
-; It is used solely after STATUS byte 3 identified HyperXF. A successful scan
-; of boundary tracks is parsed by main.s to prove that the inserted medium
-; exposes a complete side/full 3.5-inch extent; unlike GET PERCOM $4E this
-; examines the disk, not the last formatting configuration remembered by the
-; drive.
+; HyperXF GET TRACK INFO ($67), poziom analizy $20 (tylko naglowki sektorow).
+; Procedura jest uzywana dopiero po rozpoznaniu HyperXF przez bajt 3 STATUS.
+; main.s analizuje skrajne sciezki, aby potwierdzic pelna strone lub zakres
+; nosnika 3,5 cala. W odroznieniu od GET PERCOM $4E komenda bada dyskietke,
+; a nie ostatnia konfiguracje formatowania zapamietana przez stacje.
 ;
 ; Wejscie: A = numer stacji, X = logiczny numer sciezki 0..159.
 ; Wyjscie: standardowe C/status SIO; 128-bajtowy opis trafia do sector_buf.

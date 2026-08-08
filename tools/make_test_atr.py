@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Create deterministic ATR images used by the emulator test matrix."""
+"""Tworzy deterministyczne obrazy ATR dla matrycy testowej."""
 
 from __future__ import annotations
 
@@ -20,7 +20,7 @@ FORMATS = {
     "hyperxf-35-sd-2880": (2880, 128),
     "hyperxf-35-md-4160": (4160, 128),
     "hyperxf-35-dd-2880": (2880, 256),
-    # Zachowana nazwa uzywana przez starsze skrypty i gotowy plan regresji.
+    # Krotki alias tej samej geometrii 2880 x 256 B.
     "hyperxf-2880": (2880, 256),
 }
 
@@ -40,9 +40,9 @@ def make_payload(sectors: int, sector_size: int, patterned: bool) -> bytes:
                 ((sector * 37 + offset * 13 + (offset >> 3)) & 0xFF)
                 for offset in range(length)
             )
-            # A one-sector boot stub lets the ROM finish boot probing when
-            # this source image is mounted as D1 during monitor-based tests.
-            # It loads at $2000 and immediately returns from INIT at $2006.
+            # Jednosektorowy zalazek startowy pozwala ROM-owi zakonczyc probe
+            # uruchomienia obrazu zamontowanego jako D1:. Laduje sie pod $2000
+            # i natychmiast wraca z procedury INIT pod $2006.
             if sector == 1:
                 data[:7] = bytes((0x00, 0x01, 0x00, 0x20, 0x06, 0x20, 0x60))
             payload.extend(data)

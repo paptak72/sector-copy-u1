@@ -84,8 +84,8 @@ saved_app_zp:       .res APP_ZP_BYTES
 .import __RODATA_RUN__
 .import __RODATA_SIZE__
 
-; Preserve the transient application's zero-page workspace before the copier
-; uses it. This makes a later RTS to a retained DOS possible.
+; Zachowaj obszar strony zerowej programu wywolujacego, zanim uzyje go kopier.
+; Umozliwia to pozniejszy powrot RTS do pozostawionego DOS-u.
 .proc memory_save_environment
     lda PORTB
     sta saved_portb
@@ -115,9 +115,9 @@ save_zp:
     rts
 .endproc
 
-; Tell E:/S: that screen and display-list memory must stay above the entire
-; resident application. Without APPMHI, reopening E: may place GR.0 screen
-; RAM on top of the program's code and read-only data.
+; Poinformuj procedury E:/S:, ze ekran i lista wyswietlania musza lezec ponad
+; cala aplikacja. Bez APPMHI ponowne otwarcie E: mogloby umiescic ekran GR.0
+; na kodzie programu albo danych tylko do odczytu.
 .proc memory_reserve_application
     lda #<(__RODATA_RUN__ + __RODATA_SIZE__)
     sta APPMHI
@@ -126,9 +126,9 @@ save_zp:
     rts
 .endproc
 
-; Detect a resident DOS without calling any DOS-specific entry point.
-; SDX has a stable signature at $0700. For other DOSes, a DOSVEC pointing
-; into RAM is treated as evidence that a resident environment launched us.
+; Wykryj rezydentny DOS bez wywolywania procedur zaleznych od jego odmiany.
+; SDX ma stala sygnature pod $0700. Dla innych DOS-ow wskaznik DOSVEC
+; skierowany do RAM-u oznacza uruchomienie z rezydentnego srodowiska.
 .proc memory_detect_launch
     lda #0
     sta mem_sdx
@@ -160,8 +160,8 @@ no_dos:
     rts
 .endproc
 
-; Keep the resident DOS intact. No destructive bank probing is allowed in
-; this mode because an arbitrary DOS or RAMdisk may own extended-memory banks.
+; Zachowaj rezydentny DOS. Destrukcyjne sondowanie bankow jest zabronione,
+; poniewaz DOS albo RAM-dysk moze wykorzystywac pamiec rozszerzona.
 .proc memory_keep_dos
     lda MEMLO+1
     cmp #$36
@@ -179,8 +179,8 @@ unavailable:
     rts
 .endproc
 
-; Restore the state used by the launching DOS. The caller must execute RTS
-; immediately afterwards, while the original invocation stack is still live.
+; Odtworz stan DOS-u wywolujacego. Bezposrednio po tej procedurze nalezy
+; wykonac RTS, dopoki pierwotny stos wywolania pozostaje poprawny.
 .proc memory_restore_environment
     lda saved_portb
     sta PORTB
@@ -210,18 +210,19 @@ restore_zp:
     rts
 .endproc
 
-; Called after the user has explicitly selected full-memory mode. From this
-; point the application deliberately does not return to the loader or DOS.
+; Wejscie po wybraniu trybu pelnego. Od tego miejsca aplikacja swiadomie nie
+; wraca do programu ladujacego ani DOS-u.
 .proc memory_takeover
     lda #0
     sta mem_keep_dos
-    ; Establish a safe main-memory state before changing selector bits.
-    ; This is also required by the U1MB 576K/1088K PORTB shadow logic.
+    ; Ustaw bezpieczny stan pamieci glownej przed zmiana bitow selektora.
+    ; Wymaga tego rowniez logika cienia PORTB w U1MB 576K/1088K.
     lda #MAIN_PORTB
     sta PORTB
 
-    ; XEX loaders and DOSes often leave deferred VBI hooks and software
-    ; timers in their resident area. Remove those hooks before reclaiming it.
+    ; Programy ladujace XEX i DOS-y moga pozostawic odroczone wektory VBI oraz
+    ; liczniki programowe w obszarze rezydentnym. Usun je przed przejeciem
+    ; pamieci.
     sei
     lda #<SYSVBV
     sta VVBLKI
@@ -239,14 +240,14 @@ clear_timers:
     bpl clear_timers
     cli
 
-    ; Do not let an abandoned PBI/DOS handler intercept later serial calls.
+    ; Odlacz pozostawiona procedure PBI/DOS, aby nie przechwytywala operacji SIO.
     lda #0
     sta PDVMSK
     sta SHPDVS
     sta PDMSK
 
-    ; A warm-start through an overwritten DOS is unsafe. Redirect DOSVEC to
-    ; the OS cold-start vector and then reclaim the resident DOS area.
+    ; Cieply start przez nadpisany DOS jest niebezpieczny. Skieruj DOSVEC do
+    ; wektora zimnego startu systemu przed przejeciem obszaru rezydentnego.
     lda #<COLDSV
     sta DOSVEC
     lda #>COLDSV
@@ -264,16 +265,15 @@ clear_dos:
     bne clear_dos
     inc clear_ptr+1
     lda clear_ptr+1
-    ; Nie wolno czyscic stron $36-$37. Pod $3600 zaczyna sie segment AUXCODE
-    ; z tekstami menu oraz procedurami paskow postepu. Dawna granica $38
-    ; zerowala ten kod po zaladowaniu XEX-a; kopiowanie dochodzilo wtedy do
-    ; zielonego ekranu i zawieszalo sie przed pierwsza komenda READ. Bajty
-    ; Obie strony nie naleza do bufora i pozostaja nietkniete.
+    ; Czyszczenie konczy sie przed strona $36. Zakres $3600-$37FF zawiera
+    ; segment AUXCODE z tekstami menu i procedurami paskow postepu, dlatego
+    ; musi pozostac niezmieniony po zaladowaniu XEX-a. Nie nalezy on do
+    ; bankowanego bufora danych.
     cmp #$36
     bcc clear_dos
 
-    ; The copier owns conventional memory from $0700 upward. The banked
-    ; buffer deliberately uses the contiguous $4000-$7FFF main window.
+    ; Kopier przejmuje pamiec podstawowa od $0700. Bufor bankowany wykorzystuje
+    ; ciagle okno pamieci glownej $4000-$7FFF.
     lda #<$0700
     sta MEMLO
     lda #>$0700
@@ -281,14 +281,14 @@ clear_dos:
     jmp memory_build_bank_list
 .endproc
 
-; Compatibility entry point used by the UI.
+; Punkt wejscia zgodnosci uzywany przez interfejs.
 .proc memory_probe
     jmp memory_build_bank_list
 .endproc
 
-; Probe every possible 1088K RAMBO PORTB selector. A two-pass signature test
-; naturally collapses aliases on 64K, 130XE, 320K and 576K machines:
-; only the last selector which reaches a physical bank retains its signature.
+; Zbadaj wszystkie selektory PORTB mozliwe w ukladzie RAMBO 1088K. Dwufazowy
+; test sygnatur automatycznie scala aliasy na maszynach 64K, 130XE, 320K i
+; 576K: sygnature zachowuje tylko ostatni selektor danego fizycznego banku.
 .proc memory_build_bank_list
     lda mem_keep_dos
     beq destructive_probe
@@ -305,13 +305,13 @@ destructive_probe:
     lda #$40
     sta mem_main_free_hi
 
-    ; Main $4000-$7FFF window is always the first 16K buffer bank.
+    ; Glowne okno $4000-$7FFF jest zawsze pierwszym bankiem bufora 16 KB.
     lda #MAIN_PORTB
     sta mem_bank_indices
     lda #1
     sta mem_usable_banks
 
-    ; Write a unique four-byte signature through all 64 selector patterns.
+    ; Zapisz unikalna czterobajtowa sygnature przez wszystkie 64 selektory.
     lda #0
     sta probe_index
 write_loop:
@@ -333,8 +333,8 @@ write_loop:
     cmp #MAX_EXT_BANKS
     bcc write_loop
 
-    ; If an expansion aliases one selector against main RAM, remember it so
-    ; that the main window is not counted twice.
+    ; Jesli selektor rozszerzenia jest aliasem glownego RAM-u, zapamietaj go,
+    ; aby nie policzyc glownego okna dwukrotnie.
     lda #MAIN_PORTB
     sta PORTB
     jsr probe_read_signature
@@ -367,7 +367,7 @@ read_loop:
     iny
     sty mem_usable_banks
 
-    ; Derive the selector-bit mask for display and diagnostics.
+    ; Wyznacz maske bitow selektora pokazywana w diagnostyce pamieci.
     lda probe_have_first
     bne compare_selector
     lda probe_raw_port
@@ -397,9 +397,9 @@ next_selector:
     jmp calculate_buffer_units
 .endproc
 
-; Conservative buffer map used while DOS stays resident. The program image
-; starts at $8000, so $4000-$7FFF is a safe transient-program window only
-; when MEMLO does not reach into it. Extended RAM is never touched here.
+; Zachowawcza mapa bufora dla trybu rezydentnego DOS-u. Obraz programu zaczyna
+; sie od $8000, dlatego $4000-$7FFF jest bezpiecznym oknem tylko wtedy, gdy
+; MEMLO do niego nie dochodzi. Pamiec rozszerzona nie jest tutaj dotykana.
 .proc memory_build_dos_safe
     lda #MAIN_PORTB
     sta PORTB
@@ -437,7 +437,7 @@ no_capacity:
     rts
 .endproc
 
-; Total 128-byte units available to the streaming buffer.
+; Laczna liczba blokow 128 B dostepnych dla bufora strumieniowego.
 .proc calculate_buffer_units
     lda mem_usable_banks
     and #1
@@ -451,8 +451,8 @@ no_capacity:
     rts
 .endproc
 
-; Convert probe_index bits 0..5 into PORTB bits 1,2,3,5,6,7.
-; Bit 4 remains clear (CPU window enabled), bit 0 remains set (OS ROM on).
+; Przepisz bity 0..5 probe_index na bity 1,2,3,5,6,7 rejestru PORTB.
+; Bit 4 pozostaje wyzerowany (okno CPU wlaczone), a bit 0 ustawiony (ROM OS).
 .proc probe_make_port
     lda probe_index
     and #$07
@@ -467,7 +467,7 @@ no_capacity:
     rts
 .endproc
 
-; Carry clear when $4000-$4003 form a valid probe signature.
+; C=0, gdy $4000-$4003 zawiera poprawna sygnature sondy.
 .proc probe_read_signature
     lda $4000
     eor #$FF
@@ -488,7 +488,7 @@ invalid:
     rts
 .endproc
 
-; A = zero-based slot in mem_bank_indices.
+; Wejscie: A = indeks od zera w tablicy mem_bank_indices.
 .proc memory_select_bank
     cmp mem_usable_banks
     bcs unavailable

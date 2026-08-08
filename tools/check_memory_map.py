@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the fixed Atari memory regions emitted by ld65."""
+"""Sprawdza stale obszary pamieci Atari zapisane w mapie ld65."""
 
 from __future__ import annotations
 
@@ -52,10 +52,9 @@ def main() -> int:
     assert (scratch_start, scratch_end, scratch_size) == (0x3E00, 0x3FFF, 0x0200)
     assert code_start == 0x8000 and code_end < rodata_start
 
-    # Code/data may use $8000-$9FFF but stay below the traditional BASIC/cart
-    # window at $A000. APPMHI is set to RODATA end + 1 before E: is reopened.
-    # The old loader's screen can temporarily be overwritten while loading the
-    # XEX; ui_init immediately allocates a fresh display above the application.
+    # Kod i dane moga zajmowac $8000-$9FFF, ale nie przekraczaja tradycyjnego
+    # okna BASIC/kartridza od $A000. Przed ponownym otwarciem E: APPMHI wskazuje
+    # pierwszy bajt za RODATA, wiec ui_init tworzy ekran ponad aplikacja.
     assert rodata_end < 0xA000
 
     headroom = 0xA000 - (rodata_end + 1)
