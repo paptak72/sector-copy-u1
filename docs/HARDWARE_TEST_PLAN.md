@@ -4,6 +4,22 @@ Wszystkie próby zapisu wykonujemy wyłącznie na opisanych dyskietkach roboczyc
 Najpierw powstaje znany obraz testowy z sumami kontrolnymi, potem kopia jest
 ponownie zgrywana do ATR i porównywana na Macu.
 
+## Próby wykonane na rzeczywistym sprzęcie
+
+Kolejne wersje Sector Copy U1 były testowane na prawdziwym Atari 130XE z
+Ultimate 1MB i rozszerzeniem Stereo oraz stacją Zaxona wyposażoną w ROM
+HyperXF Stefana Dorndorfa. W obu kierunkach — ze stacji HyperXF oraz na stację
+HyperXF — poprawnie wykonano kopie nośników:
+
+- SD 90 KB;
+- DD 180 KB;
+- DD 720 KB na dyskietce 3,5 cala.
+
+Potwierdza to praktyczne działanie wykrywania geometrii oraz odczytu i zapisu
+z HyperXF dla skrajnego formatu 720 KB, którego pełna kopia obejmuje 2880
+sektorów. Poniższy plan pozostaje matrycą dalszych regresji, urządzeń i prób
+błędów, a nie listą samych testów emulatorowych.
+
 ## Kolejność
 
 1. Atari800: pięć podstawowych formatów — SD 90 KB, ED 130 KB, DD 180 KB,

@@ -360,6 +360,11 @@ oraz wszystkich pełnych geometrii HyperXF 5,25 i 3,5 cala w katalogu
 
 ## Potwierdzone testy
 
+- kolejne wersje programu były testowane na rzeczywistym Atari 130XE z
+  Ultimate 1MB i rozszerzeniem Stereo oraz stacją Zaxona wyposażoną w ROM
+  HyperXF Stefana Dorndorfa; poprawnie zakończono kopiowanie zarówno **ze
+  stacji HyperXF**, jak i **na tę stację** dla dyskietek SD 90 KB, DD 180 KB
+  oraz DD 720 KB;
 - samodzielny start XEX po inicjalizacji Atari OS bez DOS-u;
 - fizyczne wykrycie 65 okien bufora na emulowanym 1088XE;
 - pełne kopiowanie SD 720 sektorów D1:→D2: z końcową weryfikacją;
