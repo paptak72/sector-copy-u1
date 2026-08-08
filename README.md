@@ -1,5 +1,18 @@
 # Sector Copy U1
 
+## Pobieranie gotowego programu
+
+Najnowszy poprawnie zbudowany i przetestowany plik dla Atari można pobrać
+bezpośrednio tutaj:
+
+**[Pobierz Sector Copy U1 — plik XEX](https://github.com/paptak72/sector-copy-u1/releases/download/continuous/sector-copy-u1.xex)**
+
+Na stronie [Najnowszej wersji](https://github.com/paptak72/sector-copy-u1/releases/tag/continuous)
+znajduje się również plik `SHA256SUMS.txt` do sprawdzenia integralności.
+GitHub automatycznie buduje program i uruchamia cały zestaw testów po każdej
+zmianie gałęzi `main`. Plik w wydaniu jest podmieniany dopiero po pomyślnym
+zakończeniu budowania i testów.
+
 Sector Copy U1 jest uniwersalnym, sektorowym kopierem całych dyskietek dla
 8-bitowych komputerów Atari XL/XE. Obsługuje stacje D1:–D8:, standardowe
 formaty od 90 do 720 KB, szybkie odmiany SIO, formatowanie celu, weryfikację

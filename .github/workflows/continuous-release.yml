@@ -1,0 +1,67 @@
+name: Budowanie gotowego XEX
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+# GITHUB_TOKEN może wyłącznie odczytać kod i zaktualizować wydanie w tym
+# repozytorium. Nie korzystamy z osobistego tokenu właściciela.
+permissions:
+  contents: write
+
+concurrency:
+  group: continuous-release
+  cancel-in-progress: true
+
+jobs:
+  build-and-release:
+    name: Zbuduj, przetestuj i opublikuj
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Pobierz źródła
+        uses: actions/checkout@v7
+
+      - name: Zainstaluj zestaw cc65
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes cc65
+
+      - name: Zbuduj program i uruchom testy
+        run: make clean test
+
+      - name: Przygotuj pliki wydania
+        run: |
+          mkdir -p release
+          cp build/sector-copy-u1.xex release/sector-copy-u1.xex
+          cd release
+          sha256sum sector-copy-u1.xex > SHA256SUMS.txt
+
+      - name: Utwórz lub zaktualizuj wydanie
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          NOTES="Automatycznie zbudowany i przetestowany plik XEX z commitu ${GITHUB_SHA}."
+          if gh release view continuous --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            gh release edit continuous \
+              --repo "${GITHUB_REPOSITORY}" \
+              --title "Najnowsza gotowa wersja" \
+              --notes "${NOTES}" \
+              --latest
+            gh release upload continuous \
+              release/sector-copy-u1.xex \
+              release/SHA256SUMS.txt \
+              --repo "${GITHUB_REPOSITORY}" \
+              --clobber
+          else
+            gh release create continuous \
+              release/sector-copy-u1.xex \
+              release/SHA256SUMS.txt \
+              --repo "${GITHUB_REPOSITORY}" \
+              --target "${GITHUB_SHA}" \
+              --title "Najnowsza gotowa wersja" \
+              --notes "${NOTES}" \
+              --latest
+          fi
