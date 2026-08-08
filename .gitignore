@@ -16,6 +16,8 @@
 !/tools/**
 !/docs/
 !/docs/**
+!/third_party/
+!/third_party/**
 
 # Obrazy ATR sa generowane przez tools/make_test_atr.py. W repozytorium
 # przechowujemy jedynie ich opis, nie lokalne pliki testowe.

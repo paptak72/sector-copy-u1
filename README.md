@@ -1,13 +1,70 @@
 # Sector Copy U1
 
-Sektorowa kopiarka dyskietek dla Atari XL/XE, projektowana przede wszystkim
-dla komputerów z Ultimate 1MB i stacji zgodnych z Atari SIO.
+Sector Copy U1 jest uniwersalnym, sektorowym kopierem całych dyskietek dla
+8-bitowych komputerów Atari XL/XE. Obsługuje stacje D1:–D8:, standardowe
+formaty od 90 do 720 KB, szybkie odmiany SIO, formatowanie celu, weryfikację
+kopii oraz buforowanie w pamięci podstawowej i rozszerzonej — w tym Ultimate
+1MB. Nie kopiuje plików i nie interpretuje katalogu ani systemu plików:
+odczytuje po kolei wszystkie logiczne sektory źródła i odtwarza je na nośniku
+docelowym.
 
 Program jest samodzielnym plikiem XEX/COM. Można go uruchomić z prostego
 loadera XEX albo spod DOS-u. Uruchomiony samodzielnie przejmuje komputer.
 Po wykryciu DOS-u pozwala wybrać pełne przejęcie pamięci albo zachowanie DOS-u
-i bezpieczny powrót po zakończeniu. Nie interpretuje systemu plików: kopiuje
-wszystkie logiczne sektory dostępne przez SIO.
+i bezpieczny powrót po zakończeniu.
+
+Nie jest to kopier fizyczny ani strumieniowy. Korzysta z komend sektorowych
+udostępnianych przez stację poprzez Atari SIO, dlatego nie odtworzy ochron
+opartych na słabych lub celowo błędnych sektorach, nietypowych identyfikatorach
+albo surowym układzie ścieżki. Kopiuje natomiast całą logiczną zawartość
+każdego prawidłowo rozpoznanego formatu obsługiwanego przez program i stację.
+
+## Jak działa program
+
+1. Skanuje D1:–D8: i pozwala wybrać tylko stacje, które odpowiedziały.
+2. Dla źródła odczytuje sektor 1, STATUS i PERCOM, negocjuje szybkie SIO,
+   a w HyperXF dodatkowo sprawdza rzeczywistą liczbę ścieżek. Na tej podstawie
+   ustala rozmiar sektora, liczbę sektorów, gęstość i geometrię nośnika.
+3. Oblicza dostępną pojemność bufora. W trybie pełnym wykrywa fizyczne banki
+   PORTB i wykorzystuje także pamięć rozszerzoną; w trybie zachowania DOS-u
+   ogranicza się do bezpiecznego okna 16 KB pamięci głównej.
+4. Czyta kolejne sektory do bufora. Jeżeli mieści się w nim cały obraz,
+   odczyt źródła odbywa się jednym przebiegiem; w przeciwnym razie program
+   automatycznie dzieli kopię na przebiegi zawierające pełne sektory.
+5. Po zakończeniu odczytu może sformatować dysk docelowy zgodnie z geometrią
+   źródła albo zachować istniejący format po sprawdzeniu jego zgodności.
+6. Zapisuje sektory na cel komendą SIO z weryfikacją wykonywaną przez stację.
+   Opcjonalnie ponownie odczytuje całą kopię i porównuje każdy bajt z buforem.
+7. Po błędzie celu zachowuje dane bieżącego przebiegu, aby można było ponowić
+   formatowanie lub zapis. Po udanej kopii jednoprzebiegowej pozwala nagrać
+   z tego samego bufora następne dyskietki bez ponownego czytania źródła.
+
+Podczas odczytu, zapisu i weryfikacji program pokazuje numer sektora, jego
+zawartość jako pełny zestaw znaków ATASCII, faktycznie używaną prędkość SIO
+oraz osobne paski postępu bieżącej ścieżki i całej dyskietki.
+
+## Autorstwo i wykorzystane procedury
+
+Kod interfejsu, wykrywania pamięci, bankowanego bufora, rozpoznawania geometrii
+(łącznie z obsługą HyperXF), logiki formatowania, kopiowania, ponowień i
+weryfikacji został opracowany specjalnie dla Sector Copy U1. Wygląd ekranu
+sektora jest inspirowany sposobem prezentacji znanym z kopiera QMEG, ale projekt
+nie zawiera kodu QMEG ani kodu innych dawnych kopierów.
+
+Jedynym włączonym do pliku wynikowego zewnętrznym modułem programowym jest
+**Highspeed SIO 1.33** autorstwa Matthiasa Reichla (HiassofT), Copyright
+© 2003–2023. Moduł obsługuje transmisję przez POKEY oraz negocjację rodzin
+UltraSpeed, 1050 Turbo, XF551 High Speed i Happy 810 Warp. W projekcie użyto
+oryginalnego wydania 1.33 z ustawieniami `FASTVBI`, `MAXDRIVENO=8` i adresem
+`START=$3985`; kod integrujący go z kopierem oraz dodatkowe rozpoznawanie
+HyperXF należą do Sector Copy U1.
+
+Komplet niezmienionych źródeł wydania 1.33 i jego oryginalna licencja znajdują
+się w [`third_party/highspeed-sio-1.33`](third_party/highspeed-sio-1.33).
+Dokładny sposób zbudowania użytego obrazu, suma kontrolna i pochodzenie wersji
+są opisane w [`docs/THIRD_PARTY.md`](docs/THIRD_PARTY.md). Highspeed SIO jest
+udostępniany na warunkach GPL-2.0-or-later, dlatego cały połączony program
+Sector Copy U1 jest publikowany na tych samych warunkach.
 
 ## Stan projektu: 0.6.6
 
@@ -35,8 +92,9 @@ Aktualna wersja zawiera:
 - skan D1:-D8: oraz wybór źródła i celu wyłącznie spośród stacji, które
   odpowiedziały; jedna stacja pozostaje poprawnym źródłem i celem;
 - STATUS, PERCOM i aktywne rozpoznawanie protokołów szybkiego SIO;
-- własny sterownik POKEY dla UltraSpeed, 1050 Turbo, XF551 High Speed i Happy
-  Warp, niezależny od ROM-u systemowego i DOS-u;
+- wbudowany sterownik POKEY Highspeed SIO 1.33 Matthiasa Reichla dla
+  UltraSpeed, 1050 Turbo, XF551 High Speed i Happy Warp, niezależny od ROM-u
+  systemowego i DOS-u;
 - rozpoznawanie trzech gęstości zapisu: SD, MD/ED i DD oraz pięciu typowych
   formatów Atari 90/130/180/360/720 KB; uogólniony detektor rozumie również
   rzadkie kombinacje geometrii dopuszczone przez HyperXF, ale nie przedstawia
@@ -257,7 +315,7 @@ Potrzebne są:
 
 Do zwykłego budowania nie jest potrzebny ATASM, ponieważ sprawdzony obraz HSIO
 jest dołączony w repozytorium. ATASM jest potrzebny tylko do jego regeneracji
-ze źródeł HiassofT.
+z dołączonych, oryginalnych źródeł HiassofT.
 
 Instalacja:
 

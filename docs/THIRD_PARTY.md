@@ -5,9 +5,24 @@
 Sector Copy U1 zawiera kod Highspeed SIO autorstwa Matthiasa Reichla
 (HiassofT), Copyright © 2003–2023. Oryginalne źródła:
 
-- <https://github.com/HiassofT/highspeed-sio>
+- repozytorium: <https://github.com/HiassofT/highspeed-sio>;
+- wydanie: tag `1.33`;
+- commit: `5b3e4f1efe307244ede98be365b846552ae303fa`;
 - licencja: GNU General Public License, wersja 2 lub — według wyboru — dowolna
   późniejsza (`GPL-2.0-or-later`).
+
+Niezmieniony komplet plików źródłowych tego wydania, wraz z oryginalnymi
+informacjami o autorze i tekstem licencji, jest dołączony w katalogu:
+
+```text
+third_party/highspeed-sio-1.33/
+```
+
+Nie jest to kod napisany dla Sector Copy U1. Projekt korzysta z niego jako
+zewnętrznego silnika transmisji SIO przez POKEY. Napisane dla Sector Copy U1
+są warstwa wywołań sterownika, zapamiętywanie profilu każdej stacji,
+prezentacja rzeczywistego trybu `FAST`/`STD`, logika kopiowania oraz dodatkowe
+rozpoznawanie urządzenia i geometrii HyperXF.
 
 Do programu dołączony jest plik:
 
@@ -19,7 +34,9 @@ Parametry kompilacji różnią się od domyślnych wyłącznie konfiguracją mie
 i liczby stacji:
 
 ```sh
-atasm -dFASTVBI -dMAXDRIVENO=8 -dSTART=$3985 hisio.src
+cd third_party/highspeed-sio-1.33
+atasm -dFASTVBI -dMAXDRIVENO=8 '-dSTART=$3985' \
+  -o../../src/hsio-1.33-3985-max8.bin hisio.src
 ```
 
 - `START=$3985` — stały obszar między stanem programu a buforem sektorowym;
@@ -38,6 +55,14 @@ SHA-256:
 `make test` sprawdza rozmiar, sumę oraz adresy punktów wejścia. W razie zmiany
 źródeł lub parametrów suma musi zostać świadomie zaktualizowana, a wszystkie
 protokoły ponownie sprawdzone.
+
+## Pozostała część programu
+
+Poza wyżej wskazanym modułem Highspeed SIO kod wynikowy nie zawiera procedur
+przeniesionych z QMEG-a, DOS-ów, ROM-ów stacji ani innych kopierów. Standardowe
+rejestry Atari OS, POKEY i PORTB oraz komendy SIO, STATUS i PERCOM są
+interfejsami platformy, nie skopiowanymi modułami programu. Materiały te służą
+do dokumentacji zgodności i testów, ale nie są dołączane do repozytorium.
 
 Połączenie z kodem GPL oznacza, że wynikowy program Sector Copy U1 jest
 udostępniany na warunkach GPL-2.0-or-later. Pełny tekst znajduje się w
