@@ -1,0 +1,37 @@
+# Repozytorium znajduje sie w katalogu roboczym zawierajacym rowniez prywatne
+# materialy testowe, ROM-y, DOS-y, filmy i obrazy dyskow. Domyslnie ignorujemy
+# wiec wszystko i jawnie dopuszczamy tylko pliki nalezace do projektu.
+/*
+
+!/.gitignore
+!/LICENSE
+!/Makefile
+!/README.md
+
+!/src/
+!/src/**
+!/cfg/
+!/cfg/**
+!/tools/
+!/tools/**
+!/docs/
+!/docs/**
+
+# Obrazy ATR sa generowane przez tools/make_test_atr.py. W repozytorium
+# przechowujemy jedynie ich opis, nie lokalne pliki testowe.
+!/test-disks/
+/test-disks/*
+!/test-disks/README.md
+
+# Pozwala pozniej dodac szablony zgloszen i automatyczne budowanie GitHub.
+!/.github/
+!/.github/**
+
+# Metadane AppleDouble oraz pliki tymczasowe nigdy nie naleza do projektu.
+**/._*
+**/__pycache__/
+**/*.pyc
+**/*~
+
+# Starszy wariant sterownika dla 15 stacji nie jest używany przez program.
+/src/hsio-1.33-3985-max15.bin
