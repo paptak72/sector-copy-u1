@@ -23,6 +23,7 @@
 .export memory_takeover
 .export memory_keep_dos
 .export memory_detect_launch
+.export memory_prepare_main_ram
 .export memory_save_environment
 .export memory_reserve_application
 .export memory_restore_environment
@@ -71,6 +72,7 @@ probe_have_first:   .res 1
 saved_portb:        .res 1
 saved_appmhi_lo:    .res 1
 saved_appmhi_hi:    .res 1
+saved_ramtop:       .res 1
 saved_lmargn:       .res 1
 saved_rmargn:       .res 1
 saved_color1:       .res 1
@@ -93,6 +95,8 @@ saved_app_zp:       .res APP_ZP_BYTES
     sta saved_appmhi_lo
     lda APPMHI+1
     sta saved_appmhi_hi
+    lda RAMTOP
+    sta saved_ramtop
     lda LMARGN
     sta saved_lmargn
     lda RMARGN
@@ -112,6 +116,20 @@ save_zp:
     inx
     cpx #APP_ZP_BYTES
     bcc save_zp
+    rts
+.endproc
+
+; PORTB=$FF wybiera podstawowy RAM dla CPU i ANTIC, pozostawia ROM systemu,
+; wylacza SELF TEST oraz udostepnia RAM $A000-$BFFF zamiast ROM-u BASIC.
+; Samo przelaczenie ROM-u nie zmienia mapy pamieci zapisanej przez OS podczas
+; zimnego startu. RAMTOP=$C0 informuje E:, ze moze umiescic ekran w odzyskanym
+; RAM-ie ponizej $C000. Bez tej zmiany start z wlaczonym BASIC-em konczyl sie
+; czarnym ekranem, bo RAMTOP nadal mial wartosc $A0.
+.proc memory_prepare_main_ram
+    lda #MAIN_PORTB
+    sta PORTB
+    lda #$C0
+    sta RAMTOP
     rts
 .endproc
 
@@ -188,6 +206,8 @@ unavailable:
     sta APPMHI
     lda saved_appmhi_hi
     sta APPMHI+1
+    lda saved_ramtop
+    sta RAMTOP
     lda saved_lmargn
     sta LMARGN
     lda saved_rmargn
@@ -215,8 +235,9 @@ restore_zp:
 .proc memory_takeover
     lda #0
     sta mem_keep_dos
-    ; Ustaw bezpieczny stan pamieci glownej przed zmiana bitow selektora.
-    ; Wymaga tego rowniez logika cienia PORTB w U1MB 576K/1088K.
+    ; Ustaw stan pelnego RAM-u podstawowego: BASIC i SELF TEST sa wylaczone,
+    ; a OS pozostaje w ROM-ie. Wymaga tego rowniez logika cienia PORTB w
+    ; U1MB 576K/1088K.
     lda #MAIN_PORTB
     sta PORTB
 
@@ -453,6 +474,10 @@ no_capacity:
 
 ; Przepisz bity 0..5 probe_index na bity 1,2,3,5,6,7 rejestru PORTB.
 ; Bit 4 pozostaje wyzerowany (okno CPU wlaczone), a bit 0 ustawiony (ROM OS).
+; Bit 1 w zwyklym XL/XE steruje BASIC-em, lecz rozszerzenia 1088K dekoduja go
+; takze jako czesc numeru banku. Nie wolno wymuszac go podczas sondy, bo
+; zmniejszyloby to wykryty bufor U1MB o polowe. Po kazdym dostepie bankowym
+; memory_restore_bank przywraca MAIN_PORTB=$FF i BASIC pozostaje wylaczony.
 .proc probe_make_port
     lda probe_index
     and #$07
@@ -502,8 +527,12 @@ unavailable:
     rts
 .endproc
 
+; Odtworzenie glownego mapowania jest wywolywane po kazdym fragmencie bufora.
+; Szesc bajtow miesci sie dokladnie w wolnej koncowce UICODE pod $3E00.
+.segment "UICODE"
 .proc memory_restore_bank
     lda #MAIN_PORTB
     sta PORTB
     rts
 .endproc
+.segment "CODE"

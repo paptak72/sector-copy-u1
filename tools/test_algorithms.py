@@ -93,6 +93,19 @@ def nominal_kb(total_sectors: int, bytes_per_sector: int) -> int:
     return total_sectors // {128: 8, 256: 4, 512: 2}[bytes_per_sector]
 
 
+def detected_extended_banks(physical_bank) -> int:
+    """Model dwufazowej sondy PORTB: ostatnia sygnatura wygrywa na aliasie."""
+    last_signature: dict[object, int] = {}
+    for selector in range(64):
+        last_signature[physical_bank(selector)] = selector
+    main_signature = last_signature.get("main")
+    return sum(
+        last_signature[physical_bank(selector)] == selector
+        and last_signature[physical_bank(selector)] != main_signature
+        for selector in range(64)
+    )
+
+
 CASES = {
     "SD 90K": (720, 128, 6),
     "ED 130K": (1040, 128, 9),
@@ -124,6 +137,13 @@ assert nominal_kb(1440, 256) == 360
 assert nominal_kb(2080, 128) == 260
 assert nominal_kb(2880, 256) == 720
 assert nominal_kb(4160, 128) == 520
+
+# Na maszynie 64K wszystkie selektory sa aliasem RAM-u glownego i musza zostac
+# odrzucone. Klasyczny 130XE daje cztery banki przez bity 2-3 PORTB, a U1MB
+# 1088K pelne 64 unikalne kombinacje. Chroni to przed wynikiem 80 KB na 64K.
+assert detected_extended_banks(lambda _selector: "main") == 0
+assert detected_extended_banks(lambda selector: ("xe", (selector >> 1) & 3)) == 4
+assert detected_extended_banks(lambda selector: ("u1mb", selector)) == 64
 
 assert len(chunk_ranges(720, 128, 1)) == 6
 assert len(chunk_ranges(720, 256, 1)) == 12
@@ -280,6 +300,13 @@ assert "copy_read_all" not in success_path
 # kluczowe etykiety oraz komplet skrotow klawiaturowych obu paneli.
 assert f'title:\n    .byte "SECTOR COPY U1 {version}"' in main_source
 assert '.byte "             Paptak 2026", 0' in main_source
+launch_start = main_source.index(".proc choose_launch_mode")
+launch_end = main_source.index(".proc scan_all", launch_start)
+launch_block = main_source[launch_start:launch_end]
+launch_title_print = launch_block.index("lda #<title")
+launch_eol = launch_block.index("jsr ui_print_eol", launch_title_print)
+launch_separator = launch_block.index("jsr print_separator", launch_eol)
+assert launch_title_print < launch_eol < launch_separator
 assert ".proc draw_panel_box" in main_source
 assert ".proc draw_selected_panel" in main_source
 assert '.byte "POJEDYNCZA (SD)", 0' in main_source
@@ -315,11 +342,19 @@ assert "SCAN_DRIVES = 8" in main_source
 assert "cmp #$36\n    bcc clear_dos" in memory_source
 assert "cmp #$37\n    bcc clear_dos" not in memory_source
 assert "cmp #$38\n    bcc clear_dos" not in memory_source
+assert ".proc memory_prepare_main_ram" in memory_source
+assert "lda #MAIN_PORTB\n    sta PORTB" in memory_source
+assert "lda #$C0\n    sta RAMTOP" in memory_source
+assert "lda RAMTOP\n    sta saved_ramtop" in memory_source
+assert "lda saved_ramtop\n    sta RAMTOP" in memory_source
+assert "jsr memory_prepare_main_ram\n    jsr memory_reserve_application" in main_source
 assert '.byte "PRZEBIEG ", 0' in main_source
 assert "PORCJA" not in main_source
 assert '"POTWIERDZ ZAPIS NA DYSKU DOCELOWYM."' in main_source
-assert main_source.count("ATASCII_ESC, $09") >= 4
-assert main_source.count("ATASCII_ESC, $89") >= 4
+assert main_source.count("ATASCII_ESC, $08") >= 4
+assert main_source.count("ATASCII_ESC, $88") >= 4
+assert "ATASCII_ESC, $09" not in main_source
+assert "ATASCII_ESC, $89" not in main_source
 assert "ldx #12\n    jsr ui_set_cursor\n    lda #<copy_action" in main_source
 assert '.byte "---USTAWIENIA---", 0' in main_source
 assert '.byte "PARAMETRY KOPII", 0' in main_source
@@ -328,6 +363,10 @@ assert '.byte "---DANE I PAMIEC---", 0' in main_source
 assert ".proc draw_wide_box" in main_source
 assert "SIO: WLASNE / AUTO" not in main_source
 assert ".proc do_test_read" not in main_source
+assert "DOS / LOADER" not in main_source
+assert "SAMODZIELNY XEX" not in main_source
+assert '.byte "BUFOR RAZEM: ", 0' in main_source
+assert "lda mem_usable_banks\n    sta progress_src_ptr" in main_source
 for confirm_line in (
     "ZRODLO D1  720 KB  TURBO 1050/16",
     "CEL    D2  720 KB  TURBO HXF9",

@@ -84,7 +84,7 @@ są opisane w [`docs/THIRD_PARTY.md`](docs/THIRD_PARTY.md). Highspeed SIO jest
 udostępniany na warunkach GPL-2.0-or-later, dlatego cały połączony program
 Sector Copy U1 jest publikowany na tych samych warunkach.
 
-## Stan projektu: 0.6.7
+## Stan projektu: 0.6.8
 
 Aktualna wersja zawiera:
 
@@ -209,7 +209,7 @@ poprzednie marginesy, kolory i stan kursora są odtwarzane.
 
 ## Szybkie SIO
 
-Wersja 0.6.7 nie wywołuje systemowego `SIOV` dla operacji stacji. Każdy
+Wersja 0.6.8 nie wywołuje systemowego `SIOV` dla operacji stacji. Każdy
 STATUS, PERCOM, sektor i format przechodzi przez niezależny sterownik POKEY
 Highspeed SIO 1.33 Matthiasa Reichla (HiassofT). Dzięki temu wynik nie zależy od
 tego, czy komputer ma zwykły OS, QMEG, BIOS Ultimate 1MB albo szybki sterownik
@@ -373,6 +373,9 @@ oraz wszystkich pełnych geometrii HyperXF 5,25 i 3,5 cala w katalogu
   HyperXF Stefana Dorndorfa; poprawnie zakończono kopiowanie zarówno **ze
   stacji HyperXF**, jak i **na tę stację** dla dyskietek SD 90 KB, DD 180 KB
   oraz DD 720 KB;
+- wersja 0.6.8 uruchamia się i działa na tym zestawie również wtedy, gdy przed
+  startem XEX aktywny jest BASIC; próba na standardowym Atari 65XE z 64 KB
+  pozostaje do wykonania;
 - samodzielny start XEX po inicjalizacji Atari OS bez DOS-u;
 - fizyczne wykrycie 65 okien bufora na emulowanym 1088XE;
 - pełne kopiowanie SD 720 sektorów D1:→D2: z końcową weryfikacją;
@@ -413,7 +416,7 @@ oraz wszystkich pełnych geometrii HyperXF 5,25 i 3,5 cala w katalogu
 - W trybie zachowania DOS-u pamięć rozszerzona nie jest badana ani używana.
 - Do kopii HyperXF 720 KB w jednym przebiegu potrzeba co najmniej 45 okien
   bufora. Ultimate 1MB w trybie 1088K udostępnia programowi 65.
-- Wersja 0.6.7 wymaga prób na dyskietkach roboczych przed użyciem z ważnymi
+- Wersja 0.6.8 wymaga prób na dyskietkach roboczych przed użyciem z ważnymi
   archiwami.
 - Atari800 potrafi odpowiedzieć na rozpoznanie 1050 Turbo, lecz nie emuluje
   poprawnie dalszego numerowania sektorów z bitem Turbo. Nie zastępuje więc

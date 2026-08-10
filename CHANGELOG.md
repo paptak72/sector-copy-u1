@@ -4,6 +4,36 @@ W tym pliku są opisane różnice między kolejnymi opublikowanymi wersjami
 Sector Copy U1. Każda wersja ma własny tag i gotowy plik XEX w wydaniach
 repozytorium GitHub.
 
+## [0.6.8] - 2026-08-10
+
+### Zmieniono
+
+- Kształt opisów klawiszy `START` i `SELECT` wykorzystuje poprawny znak
+  ATASCII 8 oraz jego odmianę w negatywie 136 (`$88`).
+- Przed otwarciem interfejsu kopier jawnie ustawia `PORTB=$FF`: wyłącza ROM
+  BASIC-u i SELF TEST, wybiera podstawowy RAM dla CPU i ANTIC oraz pozostawia
+  system operacyjny w ROM-ie.
+- Tryb pełny nadal sonduje wszystkie 64 kombinacje selektora Ultimate 1MB.
+  Bit sterujący BASIC-em może być chwilowo częścią numeru banku rozszerzonego,
+  ale po każdym dostępie przywracany jest stan `$FF`, więc zmaksymalizowanie
+  bufora nie pozostawia BASIC-u włączonego.
+- Ekran `PAMIEC` nie pokazuje już nieprzydatnego pochodzenia uruchomienia
+  `DOS / LOADER`. Zawiera jednoznaczną wartość `BUFOR RAZEM` w KB, obliczaną
+  z mapy bufora rzeczywiście dostępnej w wybranym trybie pracy.
+- Poprawiono układ ekranu wyboru trybu: separator nie przecina podpisu autora,
+  a kolejne opcje są rozdzielone pustymi wierszami.
+- Oddzielono przejście do separatora ekranu startowego od wspólnego nagłówka,
+  aby edytor E: nie kasował lewego górnego narożnika panelu `ZRODLO` w menu.
+- Po wyłączeniu BASIC-u aktualizowany jest również `RAMTOP`, dzięki czemu E:
+  może utworzyć ekran w odzyskanym RAM-ie i start z aktywnym BASIC-em nie
+  kończy się czarnym ekranem.
+
+### Sprawdzono
+
+- Uruchomienie programu z aktywnym BASIC-em na rzeczywistym Atari 130XE z
+  Ultimate 1MB i poprawne działanie interfejsu po przejęciu pamięci.
+- Próba na całkowicie standardowym Atari 65XE z 64 KB pozostaje do wykonania.
+
 ## [0.6.7] - 2026-08-10
 
 ### Zmieniono

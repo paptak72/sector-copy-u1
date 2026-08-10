@@ -81,6 +81,7 @@
 .import memory_takeover
 .import memory_keep_dos
 .import memory_detect_launch
+.import memory_prepare_main_ram
 .import memory_save_environment
 .import memory_reserve_application
 .import memory_restore_environment
@@ -186,15 +187,15 @@ hyperxf_bit_mask:
     .byte $01, $02, $04, $08, $10, $20, $40, $80
 .segment "AUXCODE"
 title:
-    .byte "SECTOR COPY U1 0.6.7", ATASCII_EOL
+    .byte "SECTOR COPY U1 0.6.8", ATASCII_EOL
     .byte "             Paptak 2026", 0
 .segment "RODATA"
 launch_title:
-    .byte "TRYB URUCHOMIENIA:", ATASCII_EOL, 0
+    .byte "TRYB URUCHOMIENIA:", ATASCII_EOL, ATASCII_EOL, 0
 launch_full:
-    .byte "1 PELNY - BEZ DOS", ATASCII_EOL, 0
+    .byte "1 PELNY - BEZ DOS", ATASCII_EOL, ATASCII_EOL, 0
 launch_keep:
-    .byte "2 ZACHOWAJ DOS", ATASCII_EOL, 0
+    .byte "2 ZACHOWAJ DOS", ATASCII_EOL, ATASCII_EOL, 0
 launch_exit:
     .byte "Q/ESC POWROT", ATASCII_EOL, 0
 keep_unavailable:
@@ -250,12 +251,6 @@ scan_message:
     .byte "SKAN D1-D8...", 0
 memory_title:
     .byte "PAMIEC", ATASCII_EOL, 0
-sdx_yes:
-    .byte "SPARTADOS X", ATASCII_EOL, 0
-dos_yes:
-    .byte "DOS / LOADER", ATASCII_EOL, 0
-sdx_no:
-    .byte "SAMODZIELNY XEX", ATASCII_EOL, 0
 mode_full:
     .byte "TRYB: PELNY", ATASCII_EOL, 0
 mode_keep:
@@ -268,6 +263,10 @@ free_banks_label:
     .byte "BANKI EXT 16K: ", 0
 total_banks_label:
     .byte "BANKI RAZEM: ", 0
+total_memory_label:
+    .byte "BUFOR RAZEM: ", 0
+total_memory_suffix:
+    .byte " KB", 0
 pbmask_label:
     .byte "MASKA PORTB: $", 0
 one_pass_yes:
@@ -328,13 +327,13 @@ confirm_many_passes:
     .byte "2+", 0
 .segment "AUXCODE"
 continue_prompt:
-    ; $09 tworzy lewy skos klawisza, a jego wersja w negatywie $89 prawy.
-    .byte ATASCII_EOL, ATASCII_ESC, $09
+    ; $08 tworzy lewy skos klawisza, a jego wersja w negatywie $88 prawy.
+    .byte ATASCII_EOL, ATASCII_ESC, $08
     .byte 'S'|$80, 'T'|$80, 'A'|$80, 'R'|$80, 'T'|$80
-    .byte ATASCII_ESC, $89, " - DALEJ  "
-    .byte ATASCII_ESC, $09
+    .byte ATASCII_ESC, $88, " - DALEJ  "
+    .byte ATASCII_ESC, $08
     .byte 'S'|$80, 'E'|$80, 'L'|$80, 'E'|$80, 'C'|$80, 'T'|$80
-    .byte ATASCII_ESC, $89, " - ANULUJ", 0
+    .byte ATASCII_ESC, $88, " - ANULUJ", 0
 .segment "RODATA"
 copy_reading:
     .byte "          ETAP 1/3 - ODCZYT", ATASCII_EOL, 0
@@ -411,12 +410,12 @@ next_copy_insert:
     .byte ATASCII_EOL, "WLOZ NASTEPNA DYSKIETKE DO D", 0
 .segment "AUXCODE"
 next_copy_choices:
-    .byte ATASCII_ESC, $09
+    .byte ATASCII_ESC, $08
     .byte 'S'|$80, 'T'|$80, 'A'|$80, 'R'|$80, 'T'|$80
-    .byte ATASCII_ESC, $89, " - ZAPISZ Z BUFORA", ATASCII_EOL
-    .byte ATASCII_ESC, $09
+    .byte ATASCII_ESC, $88, " - ZAPISZ Z BUFORA", ATASCII_EOL
+    .byte ATASCII_ESC, $08
     .byte 'S'|$80, 'E'|$80, 'L'|$80, 'E'|$80, 'C'|$80, 'T'|$80
-    .byte ATASCII_ESC, $89, " - POWROT DO MENU", 0
+    .byte ATASCII_ESC, $88, " - POWROT DO MENU", 0
 .segment "RODATA"
 copy_error_title:
     .byte "KOPIA PRZERWANA", ATASCII_EOL, 0
@@ -436,6 +435,9 @@ copy_error_help:
 .proc start
     jsr memory_save_environment
     jsr memory_detect_launch
+    ; Przed otwarciem E: wybierz glowny RAM i wylacz BASIC. Stan wywolujacego
+    ; zostal juz zachowany, wiec tryb DOS moze go odtworzyc przy wyjsciu.
+    jsr memory_prepare_main_ram
     jsr memory_reserve_application
     jsr ui_init
     lda mem_dos_present
@@ -555,6 +557,10 @@ redraw:
     lda #<title
     ldy #>title
     jsr ui_print_z
+    ; Tylko ekran wyboru potrzebuje przejscia pod dwuwierszowy naglowek.
+    ; Wspolny napis title nie moze konczyc sie EOL, bo w menu glownym zmienial
+    ; stan edytora E: i kasowal lewy gorny rog panelu ZRODLO.
+    jsr ui_print_eol
     jsr print_separator
     lda #<launch_title
     ldy #>launch_title
@@ -1400,24 +1406,6 @@ set_panel_cursor:
     jsr ui_print_z
     jsr print_separator
 
-    lda mem_sdx
-    beq check_other_dos
-    lda #<sdx_yes
-    ldy #>sdx_yes
-    jsr ui_print_z
-    jmp show_mode
-check_other_dos:
-    lda mem_dos_present
-    beq no_dos
-    lda #<dos_yes
-    ldy #>dos_yes
-    jsr ui_print_z
-    jmp show_mode
-no_dos:
-    lda #<sdx_no
-    ldy #>sdx_no
-    jsr ui_print_z
-
 show_mode:
     lda mem_keep_dos
     beq memory_full_mode
@@ -1458,6 +1446,31 @@ show_values:
     jsr ui_print_z
     lda mem_total_banks
     jsr ui_print_u8
+    jsr ui_print_eol
+
+    ; Pokaz pamiec faktycznie dostepna dla bufora w biezacym trybie pracy,
+    ; a nie nominalna pojemnosc komputera. Kazda pozycja z utworzonej mapy
+    ; bufora ma 16 KB. Przykladowo pelny 130XE daje 5*16=80 KB, U1MB 65*16=
+    ; 1040 KB, a tryb zachowania DOS-u zwykle tylko 1*16=16 KB.
+    lda #<total_memory_label
+    ldy #>total_memory_label
+    jsr ui_print_z
+    lda mem_usable_banks
+    sta progress_src_ptr
+    lda #0
+    sta progress_src_ptr+1
+    ldx #4
+total_memory_shift:
+    asl progress_src_ptr
+    rol progress_src_ptr+1
+    dex
+    bne total_memory_shift
+    lda progress_src_ptr
+    ldy progress_src_ptr+1
+    jsr ui_print_u16
+    lda #<total_memory_suffix
+    ldy #>total_memory_suffix
+    jsr ui_print_z
     jsr ui_print_eol
 
     lda #<pbmask_label
