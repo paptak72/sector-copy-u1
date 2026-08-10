@@ -36,14 +36,36 @@ jobs:
         run: |
           mkdir -p release
           cp build/sector-copy-u1.xex release/sector-copy-u1.xex
-          cd release
-          sha256sum sector-copy-u1.xex > SHA256SUMS.txt
+          sha256sum release/sector-copy-u1.xex | sed 's#release/##' > release/SHA256SUMS.txt
+
+          VERSION_NUMBER="$(tr -d '[:space:]' < VERSION)"
+          awk -v version="${VERSION_NUMBER}" '
+            $0 ~ "^## \\[" version "\\]" { found=1; next }
+            found && /^## \[/ { exit }
+            found { print }
+          ' CHANGELOG.md > release/RELEASE_NOTES.md
+          test -s release/RELEASE_NOTES.md
+          printf '\nCommit: `%s`\n' "${GITHUB_SHA}" >> release/RELEASE_NOTES.md
 
       - name: Utwórz lub zaktualizuj wydanie
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          NOTES="Automatycznie zbudowany i przetestowany plik XEX z commitu ${GITHUB_SHA}."
+          VERSION_NUMBER="$(tr -d '[:space:]' < VERSION)"
+          VERSION_TAG="v${VERSION_NUMBER}"
+
+          # Numerowane wydanie jest niezmienne. Powstaje tylko raz, po udanym
+          # zbudowaniu pierwszego commitu deklarującego dany numer wersji.
+          if ! gh release view "${VERSION_TAG}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            gh release create "${VERSION_TAG}" \
+              release/sector-copy-u1.xex \
+              release/SHA256SUMS.txt \
+              --repo "${GITHUB_REPOSITORY}" \
+              --target "${GITHUB_SHA}" \
+              --title "Sector Copy U1 ${VERSION_NUMBER}" \
+              --notes-file release/RELEASE_NOTES.md \
+              --latest
+          fi
 
           # Stały adres pobierania wymaga stałego tagu, ale tag ma wskazywać
           # dokładnie commit, z którego pochodzi aktualnie publikowany XEX.
@@ -54,9 +76,9 @@ jobs:
             gh release edit continuous \
               --repo "${GITHUB_REPOSITORY}" \
               --target "${GITHUB_SHA}" \
-              --title "Najnowsza gotowa wersja" \
-              --notes "${NOTES}" \
-              --latest
+              --title "Sector Copy U1 ${VERSION_NUMBER} — najnowsza wersja" \
+              --notes-file release/RELEASE_NOTES.md \
+              --latest=false
             gh release upload continuous \
               release/sector-copy-u1.xex \
               release/SHA256SUMS.txt \
@@ -68,7 +90,7 @@ jobs:
               release/SHA256SUMS.txt \
               --repo "${GITHUB_REPOSITORY}" \
               --target "${GITHUB_SHA}" \
-              --title "Najnowsza gotowa wersja" \
-              --notes "${NOTES}" \
-              --latest
+              --title "Sector Copy U1 ${VERSION_NUMBER} — najnowsza wersja" \
+              --notes-file release/RELEASE_NOTES.md \
+              --latest=false
           fi

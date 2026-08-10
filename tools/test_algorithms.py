@@ -178,8 +178,13 @@ assert not hyperxf_track_valid(bad_track, 18)
 
 # Ramka zajmuje kolumny 0 i 39, dlatego kazdy tekst ekranowy musi miescic sie
 # w 38-kolumnowym obszarze pomiedzy nimi.
-main_source = (Path(__file__).parents[1] / "src" / "main.s").read_text()
-memory_source = (Path(__file__).parents[1] / "src" / "memory.s").read_text()
+project_root = Path(__file__).parents[1]
+main_source = (project_root / "src" / "main.s").read_text()
+memory_source = (project_root / "src" / "memory.s").read_text()
+version = (project_root / "VERSION").read_text().strip()
+changelog = (project_root / "CHANGELOG.md").read_text()
+assert f'SECTOR COPY U1 {version}' in main_source
+assert f"## [{version}]" in changelog
 for line_number, line in enumerate(main_source.splitlines(), 1):
     for literal in re.findall(r'"([^"]*)"', line):
         assert len(literal) <= 38, (
@@ -273,7 +278,7 @@ assert "copy_read_all" not in success_path
 
 # Glowne menu ma dwa osobne panele stacji. Asercje obejmuja procedury wyboru,
 # kluczowe etykiety oraz komplet skrotow klawiaturowych obu paneli.
-assert 'title:\n    .byte "SECTOR COPY U1 0.6.6"' in main_source
+assert f'title:\n    .byte "SECTOR COPY U1 {version}"' in main_source
 assert '.byte "             Paptak 2026", 0' in main_source
 assert ".proc draw_panel_box" in main_source
 assert ".proc draw_selected_panel" in main_source
@@ -293,15 +298,16 @@ for panel_line in (
     "TURBO 1050/16",
     "26X128  4160 S",
 ):
-    assert len(panel_line) <= 15, f"panel overflow: {panel_line!r}"
+    assert len(panel_line) <= 16, f"panel overflow: {panel_line!r}"
 assert ".proc invert_copy_action" not in main_source
 assert "source_panel_title:\n    .byte 'Z'|$80" in main_source
 assert "target_panel_title:\n    .byte 'C'|$80" in main_source
 assert "copy_action:\n    .byte 'K'|$80" in main_source
 assert "verify_label:\n    .byte 'W'|$80" in main_source
 assert "format_label:\n    .byte 'F'|$80" in main_source
-for key in ("Z", "C", "K", "F", "W", "S", "T", "P", "Q"):
+for key in ("Z", "C", "K", "F", "W", "S", "P", "Q"):
     assert f"cmp #'{key}'" in main_source
+assert "cmp #'T'" not in main_source
 assert "cmp #'1'\n    beq next_source" not in main_source
 assert "cmp #'2'\n    beq next_target" not in main_source
 assert "drive_loop:" not in main_source
@@ -312,8 +318,23 @@ assert "cmp #$38\n    bcc clear_dos" not in memory_source
 assert '.byte "PRZEBIEG ", 0' in main_source
 assert "PORCJA" not in main_source
 assert '"POTWIERDZ ZAPIS NA DYSKU DOCELOWYM."' in main_source
-assert main_source.count("ATASCII_ESC, $06") >= 8
+assert main_source.count("ATASCII_ESC, $09") >= 4
+assert main_source.count("ATASCII_ESC, $89") >= 4
 assert "ldx #12\n    jsr ui_set_cursor\n    lda #<copy_action" in main_source
+assert '.byte "---USTAWIENIA---", 0' in main_source
+assert '.byte "PARAMETRY KOPII", 0' in main_source
+assert '.byte "---NOSNIKI---", 0' in main_source
+assert '.byte "---DANE I PAMIEC---", 0' in main_source
+assert ".proc draw_wide_box" in main_source
+assert "SIO: WLASNE / AUTO" not in main_source
+assert ".proc do_test_read" not in main_source
+for confirm_line in (
+    "ZRODLO D1  720 KB  TURBO 1050/16",
+    "CEL    D2  720 KB  TURBO HXF9",
+    "GEOMETRIA   80X2X18 / 256 B",
+    "BUFOR 16 KB 45/65",
+):
+    assert len(confirm_line) <= 34, f"confirmation overflow: {confirm_line!r}"
 assert '.byte "SKAN D1-D8...", 0' in main_source
 assert "SKAN ZAKONCZONY" not in main_source
 assert ".proc next_detected_drive" in main_source

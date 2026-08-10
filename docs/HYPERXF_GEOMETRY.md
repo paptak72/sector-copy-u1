@@ -1,6 +1,6 @@
 # HyperXF — wykrywanie gęstości i geometrii
 
-Ten dokument opisuje decyzje implementacyjne w Sector Copy U1 0.6.6. Źródłem
+Ten dokument opisuje decyzje implementacyjne w Sector Copy U1 0.6.7. Źródłem
 protokołu jest instrukcja **Hyper+ XF 1.0** Stefana Dorndorffa:
 
 - <https://ftp.pigwa.net/stuff/collections/nir_dary_cds/Hardware%20Info/HyperXF/Manual/Anleitung.txt>

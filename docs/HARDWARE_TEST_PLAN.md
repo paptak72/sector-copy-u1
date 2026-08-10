@@ -1,4 +1,4 @@
-# Plan prób sprzętowych — wersja 0.6.6
+# Plan prób sprzętowych — wersja 0.6.7
 
 Wszystkie próby zapisu wykonujemy wyłącznie na opisanych dyskietkach roboczych.
 Najpierw powstaje znany obraz testowy z sumami kontrolnymi, potem kopia jest
@@ -151,7 +151,7 @@ użyty jako źródło, ponieważ groziłoby to cichym pominięciem danych.
 
 ## Próba rozpoznania HyperXF krok po kroku
 
-1. Uruchomić 0.6.6 i poczekać na skan.
+1. Uruchomić 0.6.7 i poczekać na skan.
 2. W panelu stacji Zaxona odczytać wiersz `SIO`. Dla ROM-u Stefana Dorndorfa
    oczekujemy `HXF9` albo `HXF` z innym dzielnikiem zwróconym przez `$3F`;
    `HXF40` oznacza, że stacja została rozpoznana, ale profil jest standardowy.
@@ -159,7 +159,7 @@ użyty jako źródło, ponieważ groziłoby to cichym pominięciem danych.
    danych. Zanotować czas odczytu i zapisu osobno oraz obserwować żywy wskaźnik
    `FAST`/`STD` przy kolejnych sektorach.
 4. Powtórzyć po zimnym starcie ze zwykłym Atari OS oraz QMEG. Wynik powinien
-   być taki sam, ponieważ wersja 0.6.6 nie korzysta z SIOV ROM-u.
+   być taki sam, ponieważ wersja 0.6.7 nie korzysta z SIOV ROM-u.
 5. Sformatować cel w programie. Przy aktywnym szybkim profilu ekran powinien
    pokazać `HYPERXF SKEW: ULTRASPEED`; następnie zapis i żółta weryfikacja mają
    utrzymywać odpowiednio `FAST` albo jawnie pokazać chwilowy `STD` po fallbacku.

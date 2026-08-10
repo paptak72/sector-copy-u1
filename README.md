@@ -13,6 +13,11 @@ GitHub automatycznie buduje program i uruchamia cały zestaw testów po każdej
 zmianie gałęzi `main`. Plik w wydaniu jest podmieniany dopiero po pomyślnym
 zakończeniu budowania i testów.
 
+Opis różnic między wersjami znajduje się w pliku
+[`CHANGELOG.md`](CHANGELOG.md). Numer bieżącego wydania jest zapisany również
+w pliku [`VERSION`](VERSION), dzięki czemu kod programu, dokumentacja i gotowy
+XEX mają jednoznacznie powiązany numer.
+
 Sector Copy U1 jest uniwersalnym, sektorowym kopierem całych dyskietek dla
 8-bitowych komputerów Atari XL/XE. Obsługuje stacje D1:–D8:, standardowe
 formaty od 90 do 720 KB, szybkie odmiany SIO, formatowanie celu, weryfikację
@@ -79,16 +84,19 @@ są opisane w [`docs/THIRD_PARTY.md`](docs/THIRD_PARTY.md). Highspeed SIO jest
 udostępniany na warunkach GPL-2.0-or-later, dlatego cały połączony program
 Sector Copy U1 jest publikowany na tych samych warunkach.
 
-## Stan projektu: 0.6.6
+## Stan projektu: 0.6.7
 
 Aktualna wersja zawiera:
 
-- wariant B menu: dwa symetryczne panele `ZRODLO` i `CEL`, wyraźne pole
-  kopiowania oraz oddzielna, uporządkowana sekcja ustawień; litery skrótów
-  `Z/C/K/F/W/S/T/P/Q` są pokazane w inverse;
+- wariant B menu: dwa symetryczne, poszerzone panele `ZRODLO` i `CEL`, wyraźne
+  pole kopiowania oraz oddzielna, uporządkowana sekcja ustawień; litery skrótów
+  `Z/C/K/F/W/S/P/Q` są pokazane w inverse;
 - opisowy wariant A informacji o nośniku: numer stacji i pojemność, pełna
   nazwa gęstości, geometria, liczba sektorów oraz protokół SIO w osobnych
   wierszach obu paneli;
+- wariant C ekranu `PARAMETRY KOPII`: osobne ramki `NOŚNIKI` oraz
+  `DANE I PAMIĘĆ`, pełne parametry źródła i celu, rozmiar bufora, liczba
+  przebiegów, formatowanie i weryfikacja;
 - pełnoekranowy interfejs E: wykorzystujący wszystkie 40 kolumn: semigraficzna
   ramka zajmuje kolumny 0 i 39, a tekst kolumny 1-38;
 - cztery palety etapów o wysokim kontraście: granatowe menu i komunikaty,
@@ -201,7 +209,7 @@ poprzednie marginesy, kolory i stan kursora są odtwarzane.
 
 ## Szybkie SIO
 
-Wersja 0.6.6 nie wywołuje systemowego `SIOV` dla operacji stacji. Każdy
+Wersja 0.6.7 nie wywołuje systemowego `SIOV` dla operacji stacji. Każdy
 STATUS, PERCOM, sektor i format przechodzi przez niezależny sterownik POKEY
 Highspeed SIO 1.33 Matthiasa Reichla (HiassofT). Dzięki temu wynik nie zależy od
 tego, czy komputer ma zwykły OS, QMEG, BIOS Ultimate 1MB albo szybki sterownik
@@ -405,7 +413,7 @@ oraz wszystkich pełnych geometrii HyperXF 5,25 i 3,5 cala w katalogu
 - W trybie zachowania DOS-u pamięć rozszerzona nie jest badana ani używana.
 - Do kopii HyperXF 720 KB w jednym przebiegu potrzeba co najmniej 45 okien
   bufora. Ultimate 1MB w trybie 1088K udostępnia programowi 65.
-- Wersja 0.6.6 wymaga prób na dyskietkach roboczych przed użyciem z ważnymi
+- Wersja 0.6.7 wymaga prób na dyskietkach roboczych przed użyciem z ważnymi
   archiwami.
 - Atari800 potrafi odpowiedzieć na rozpoznanie 1050 Turbo, lecz nie emuluje
   poprawnie dalszego numerowania sektorów z bitem Turbo. Nie zastępuje więc

@@ -164,7 +164,6 @@ progress_divisor:  .res 1
 source_drive:     .res 1
 target_drive:     .res 1
 scan_index:       .res 1
-last_message:     .res 1
 verify_enabled:   .res 1
 format_enabled:   .res 1
 target_initialized: .res 1
@@ -187,7 +186,7 @@ hyperxf_bit_mask:
     .byte $01, $02, $04, $08, $10, $20, $40, $80
 .segment "AUXCODE"
 title:
-    .byte "SECTOR COPY U1 0.6.6", ATASCII_EOL
+    .byte "SECTOR COPY U1 0.6.7", ATASCII_EOL
     .byte "             Paptak 2026", 0
 .segment "RODATA"
 launch_title:
@@ -244,18 +243,11 @@ turbo_prefix:
 copy_action:
     .byte 'K'|$80, "OPIUJ DYSKIETKE", 0
 settings_title:
-    .byte "USTAWIENIA", 0
+    .byte "---USTAWIENIA---", 0
 bottom_menu:
-    .byte 'S'|$80, "KAN  ", 'T'|$80, "EST  ", 'P'|$80, "AMIEC  "
-    .byte 'Q'|$80, "UIT", 0
+    .byte 'S'|$80, "KAN   ", 'P'|$80, "AMIEC   ", 'Q'|$80, "UIT", 0
 scan_message:
     .byte "SKAN D1-D8...", 0
-read_ok_message:
-    .byte "SEKTOR 1 OK:$", 0
-read_error_message:
-    .byte "BLAD ODCZYTU SIO: ", 0
-not_present_message:
-    .byte "STACJA NIE ODPOWIADA", 0
 memory_title:
     .byte "PAMIEC", ATASCII_EOL, 0
 sdx_yes:
@@ -289,15 +281,11 @@ copy_multi_pass:
 return_label:
     .byte ATASCII_EOL, "KLAWISZ - POWROT", 0
 copy_title:
-    .byte "KOPIA SEKTOROWA", ATASCII_EOL, 0
+    .byte "PARAMETRY KOPII", 0
 copy_from_label:
     .byte "ZRODLO D", 0
 copy_to_label:
-    .byte "  CEL D", 0
-copy_sectors_label:
-    .byte "SEKTORY: ", 0
-copy_banks_label:
-    .byte "BANKI 16K: ", 0
+    .byte "CEL    D", 0
 usable_banks_label:
     .byte "BUFOR 16K: ", 0
 verify_label:
@@ -311,21 +299,42 @@ no_label:
     .byte "NIE", 0
 yes_label:
     .byte "TAK", 0
-sio_own_label:
-    .byte "SIO: WLASNE / AUTO", 0
 buffer_short_label:
     .byte "BUF: ", 0
-copy_warning:
-    .byte ATASCII_EOL, "UWAGA: CEL ZOSTANIE NADPISANY!", ATASCII_EOL
-    .byte "DANE ZOSTANA USUNIETE.", ATASCII_EOL, 0
+copy_warning_overwrite:
+    .byte "UWAGA: CEL ZOSTANIE NADPISANY", 0
+copy_warning_deleted:
+    .byte "DANE ZOSTANA USUNIETE", 0
+.segment "RODATA"
+confirm_media_title:
+    .byte "---NOSNIKI---", 0
+confirm_data_title:
+    .byte "---DANE I PAMIEC---", 0
+confirm_geometry_label:
+    .byte "GEOMETRIA   ", 0
+confirm_sectors_label:
+    .byte "SEKTORY     ", 0
+confirm_buffer_label:
+    .byte "BUFOR 16 KB ", 0
+confirm_passes_label:
+    .byte "PRZEBIEGI   ", 0
+confirm_geometry_sep:
+    .byte " / ", 0
+confirm_bytes_suffix:
+    .byte " B", 0
+confirm_one_pass:
+    .byte "1", 0
+confirm_many_passes:
+    .byte "2+", 0
 .segment "AUXCODE"
 continue_prompt:
-    .byte ATASCII_EOL, ATASCII_ESC, $06
+    ; $09 tworzy lewy skos klawisza, a jego wersja w negatywie $89 prawy.
+    .byte ATASCII_EOL, ATASCII_ESC, $09
     .byte 'S'|$80, 'T'|$80, 'A'|$80, 'R'|$80, 'T'|$80
-    .byte ATASCII_ESC, $06, " - DALEJ  "
-    .byte ATASCII_ESC, $06
+    .byte ATASCII_ESC, $89, " - DALEJ  "
+    .byte ATASCII_ESC, $09
     .byte 'S'|$80, 'E'|$80, 'L'|$80, 'E'|$80, 'C'|$80, 'T'|$80
-    .byte ATASCII_ESC, $06, " - ANULUJ", 0
+    .byte ATASCII_ESC, $89, " - ANULUJ", 0
 .segment "RODATA"
 copy_reading:
     .byte "          ETAP 1/3 - ODCZYT", ATASCII_EOL, 0
@@ -402,12 +411,12 @@ next_copy_insert:
     .byte ATASCII_EOL, "WLOZ NASTEPNA DYSKIETKE DO D", 0
 .segment "AUXCODE"
 next_copy_choices:
-    .byte ATASCII_ESC, $06
+    .byte ATASCII_ESC, $09
     .byte 'S'|$80, 'T'|$80, 'A'|$80, 'R'|$80, 'T'|$80
-    .byte ATASCII_ESC, $06, " - ZAPISZ Z BUFORA", ATASCII_EOL
-    .byte ATASCII_ESC, $06
+    .byte ATASCII_ESC, $89, " - ZAPISZ Z BUFORA", ATASCII_EOL
+    .byte ATASCII_ESC, $09
     .byte 'S'|$80, 'E'|$80, 'L'|$80, 'E'|$80, 'C'|$80, 'T'|$80
-    .byte ATASCII_ESC, $06, " - POWROT DO MENU", 0
+    .byte ATASCII_ESC, $89, " - POWROT DO MENU", 0
 .segment "RODATA"
 copy_error_title:
     .byte "KOPIA PRZERWANA", ATASCII_EOL, 0
@@ -464,8 +473,6 @@ initialize:
     sta source_drive
     lda #2
     sta target_drive
-    lda #0
-    sta last_message
     lda #1
     sta verify_enabled
     sta format_enabled
@@ -481,8 +488,6 @@ main_loop:
     beq next_target
     cmp #'S'
     beq rescan
-    cmp #'T'
-    beq test_read
     cmp #'P'
     beq show_memory
     cmp #'K'
@@ -510,13 +515,7 @@ next_target:
     jmp main_loop
 
 rescan:
-    lda #0
-    sta last_message
     jsr scan_all
-    jmp main_loop
-
-test_read:
-    jsr do_test_read
     jmp main_loop
 
 show_memory:
@@ -629,8 +628,6 @@ scanned:
     lda scan_index
     cmp #SCAN_DRIVES+1
     bcc next_drive
-    lda #0
-    sta last_message
 
     ; Ponowny skan moze odbyc sie po odlaczeniu lub zmianie numeru stacji.
     ; Nie pozostawiamy wtedy wskazania na nieistniejace Dn:. Jezeli nie ma
@@ -1002,7 +999,7 @@ failed:
     ldy #>title
     jsr ui_print_z
 
-    ldx #2
+    ldx #1
     jsr draw_panel_box
     ldx #21
     jsr draw_panel_box
@@ -1021,7 +1018,7 @@ failed:
     jsr ui_print_z
 
     lda source_drive
-    ldx #4
+    ldx #3
     jsr draw_selected_panel
     lda target_drive
     ldx #23
@@ -1035,7 +1032,7 @@ failed:
     jsr ui_print_z
 
     lda #14
-    ldx #14
+    ldx #12
     jsr ui_set_cursor
     lda #<settings_title
     ldy #>settings_title
@@ -1083,58 +1080,16 @@ main_mode_done:
     lda mem_usable_banks
     jsr ui_print_u8
 
-    lda #19
-    ldx #7
-    jsr ui_set_cursor
-    lda #<sio_own_label
-    ldy #>sio_own_label
-    jsr ui_print_z
-
     lda #21
-    ldx #3
+    ldx #10
     jsr ui_set_cursor
     lda #<bottom_menu
     ldy #>bottom_menu
     jsr ui_print_z
-
-    lda #22
-    ldx #2
-    jsr ui_set_cursor
-    lda last_message
-    beq done
-    cmp #2
-    beq read_ok
-    cmp #3
-    beq read_error
-    cmp #4
-    beq not_present
-done:
     rts
-read_ok:
-    lda #<read_ok_message
-    ldy #>read_ok_message
-    jsr ui_print_z
-    lda sio_sector_buf
-    jsr print_hex
-    lda sio_sector_buf+1
-    jsr print_hex
-    lda sio_sector_buf+2
-    jsr print_hex
-    lda sio_sector_buf+3
-    jmp print_hex
-read_error:
-    lda #<read_error_message
-    ldy #>read_error_message
-    jsr ui_print_z
-    lda sio_result
-    jmp ui_print_u8
-not_present:
-    lda #<not_present_message
-    ldy #>not_present_message
-    jmp ui_print_z
 .endproc
 
-; Rysuje wewnetrzny panel 17x8 od wiersza 3. Wejscie: X = lewa kolumna.
+; Rysuje wewnetrzny panel 18x8 od wiersza 3. Wejscie: X = lewa kolumna.
 .proc draw_panel_box
     stx scan_index
     lda SAVMSC
@@ -1159,7 +1114,7 @@ not_present:
 top:
     sta (progress_dst_ptr),y
     iny
-    cpy #16
+    cpy #17
     bcc top
     lda #SCREEN_BOX_TR
     sta (progress_dst_ptr),y
@@ -1176,7 +1131,7 @@ sides:
     ldy #0
     lda #SCREEN_BOX_V
     sta (progress_dst_ptr),y
-    ldy #16
+    ldy #17
     sta (progress_dst_ptr),y
     dex
     bne sides
@@ -1196,7 +1151,7 @@ sides:
 bottom:
     sta (progress_dst_ptr),y
     iny
-    cpy #16
+    cpy #17
     bcc bottom
     lda #SCREEN_BOX_BR
     sta (progress_dst_ptr),y
@@ -1247,31 +1202,8 @@ present:
     lda #' '
     jsr ui_print_char
 
-    ; Oblicz KB bez mnozenia: total/8 dla 128 B, /4 dla 256 B, /2 dla 512 B.
     ldx scan_index
-    lda geo_total_lo,x
-    sta progress_src_ptr
-    lda geo_total_hi,x
-    sta progress_src_ptr+1
-    lda geo_bps_hi,x
-    cmp #2
-    beq capacity_shift_1
-    cmp #1
-    beq capacity_shift_2
-    lsr progress_src_ptr+1
-    ror progress_src_ptr
-capacity_shift_2:
-    lsr progress_src_ptr+1
-    ror progress_src_ptr
-capacity_shift_1:
-    lsr progress_src_ptr+1
-    ror progress_src_ptr
-    lda progress_src_ptr
-    ldy progress_src_ptr+1
-    jsr ui_print_u16
-    lda #<kb_label
-    ldy #>kb_label
-    jsr ui_print_z
+    jsr print_drive_capacity
 
     ; Nazwa gestosci. DD dwustronne dostaje jawny opis zatwierdzony dla
     ; wariantu A; liczba stron pozostaje dodatkowo widoczna w kolejnym wierszu.
@@ -1356,6 +1288,55 @@ print_density:
     lda #9
     jsr set_panel_cursor
     ldx scan_index
+    jsr print_drive_speed
+    rts
+.endproc
+
+; Rzadziej wykonywane pomocnicze procedury mieszcza sie pod $3800. Ten obszar
+; jest chroniony przez memory_takeover i nie odbiera miejsca glownemu kodowi.
+.segment "AUXCODE"
+
+; Oblicza i drukuje nominalna pojemnosc nosnika wskazanego w X. Dzielenie
+; wykorzystuje przesuniecia: total/8 dla 128 B, /4 dla 256 B i /2 dla 512 B.
+.proc print_drive_capacity
+    lda geo_total_lo,x
+    sta progress_src_ptr
+    lda geo_total_hi,x
+    sta progress_src_ptr+1
+    lda geo_bps_hi,x
+    cmp #2
+    beq capacity_shift_1
+    cmp #1
+    beq capacity_shift_2
+    lsr progress_src_ptr+1
+    ror progress_src_ptr
+capacity_shift_2:
+    lsr progress_src_ptr+1
+    ror progress_src_ptr
+capacity_shift_1:
+    lsr progress_src_ptr+1
+    ror progress_src_ptr
+    lda progress_src_ptr
+    ldy progress_src_ptr+1
+    jsr ui_print_u16
+    lda #<kb_label
+    ldy #>kb_label
+    jmp ui_print_z
+.endproc
+
+; Drukuje stale dwuznakowe odstepy w wierszach opisujacych stacje.
+.proc print_two_spaces
+    lda #' '
+    jsr ui_print_char
+    jmp ui_print_char
+.endproc
+
+.segment "CODE"
+
+; Drukuje nazwe wykrytej rodziny szybkiego SIO i dzielnik POKEY dla stacji X.
+; Zero w geo_speed_kind oznacza transmisje standardowa.
+.proc print_drive_speed
+    stx scan_index
     lda geo_speed_kind,x
     beq speed_std
     pha
@@ -1403,37 +1384,13 @@ speed_std:
     lda #<std_label
     ldy #>std_label
     jmp ui_print_z
+.endproc
 
 ; Ustaw wiersz A w zapamietanej kolumnie panelu. JSR do tej lokalnej trampoliny
 ; jest krotszy niz powtarzane LDX abs + JSR przy kazdym z pieciu wierszy.
 set_panel_cursor:
     ldx progress_render_rows
     jmp ui_set_cursor
-.endproc
-
-.proc do_test_read
-    lda source_drive
-    cmp #SCAN_DRIVES+1
-    bcs try_anyway
-    tax
-    dex
-    lda geo_present,x
-    bne try_anyway
-    lda #4
-    sta last_message
-    rts
-try_anyway:
-    lda source_drive
-    jsr sio_read_boot_sector
-    bcs failed
-    lda #2
-    sta last_message
-    rts
-failed:
-    lda #3
-    sta last_message
-    rts
-.endproc
 
 .proc draw_memory
     jsr memory_build_bank_list
@@ -1902,34 +1859,190 @@ no_format:
     jmp print_separator
 .endproc
 
+; Rysuje szeroka ramke o stalej szerokosci 36 znakow. A/Y zawiera przesuniecie
+; lewego gornego rogu wzgledem SAVMSC, a X liczbe pustych wierszy wewnatrz.
+; Procedura sluzy ekranowi PARAMETRY KOPII i nie korzysta z CIO, dzieki czemu
+; naroza oraz pionowe krawedzie trafiaja zawsze do dokladnych kolumn ekranu.
+.proc draw_wide_box
+    stx progress_render_rows
+    clc
+    adc SAVMSC
+    sta progress_dst_ptr
+    tya
+    adc SAVMSC+1
+    sta progress_dst_ptr+1
+
+    ldy #0
+    lda #SCREEN_BOX_TL
+    sta (progress_dst_ptr),y
+    iny
+    lda #SCREEN_HLINE
+top:
+    sta (progress_dst_ptr),y
+    iny
+    cpy #35
+    bcc top
+    lda #SCREEN_BOX_TR
+    sta (progress_dst_ptr),y
+
+sides:
+    jsr wide_box_next_row
+    ldy #0
+    lda #SCREEN_BOX_V
+    sta (progress_dst_ptr),y
+    ldy #35
+    sta (progress_dst_ptr),y
+    dec progress_render_rows
+    bne sides
+
+    jsr wide_box_next_row
+    ldy #0
+    lda #SCREEN_BOX_BL
+    sta (progress_dst_ptr),y
+    iny
+    lda #SCREEN_HLINE
+bottom:
+    sta (progress_dst_ptr),y
+    iny
+    cpy #35
+    bcc bottom
+    lda #SCREEN_BOX_BR
+    sta (progress_dst_ptr),y
+    rts
+
+wide_box_next_row:
+    lda progress_dst_ptr
+    clc
+    adc #40
+    sta progress_dst_ptr
+    bcc :+
+    inc progress_dst_ptr+1
+:
+    rts
+.endproc
+
 .proc draw_copy_confirmation
     jsr ui_begin_screen
+
+    ; Wariant C: dwa szerokie bloki rozdzielaja wybor nosnikow od informacji
+    ; o geometrii i pamieci. Wszystkie wartosci pochodza z tego samego rekordu
+    ; geometrii, ktory zostanie przekazany procedurom kopiowania.
+    lda #<(3*40+2)
+    ldy #>(3*40+2)
+    ldx #2
+    jsr draw_wide_box
+    lda #<(8*40+2)
+    ldy #>(8*40+2)
+    ldx #4
+    jsr draw_wide_box
+
+    lda #1
+    ldx #12
+    jsr ui_set_cursor
     lda #<copy_title
     ldy #>copy_title
     jsr ui_print_z
-    jsr print_separator
+
+    lda #3
+    ldx #13
+    jsr ui_set_cursor
+    lda #<confirm_media_title
+    ldy #>confirm_media_title
+    jsr ui_print_z
+
+    lda #4
+    ldx #3
+    jsr ui_set_cursor
     lda #<copy_from_label
     ldy #>copy_from_label
     jsr ui_print_z
     lda source_drive
     jsr ui_print_u8
+    jsr print_two_spaces
+    ldx source_drive
+    dex
+    jsr print_drive_capacity
+    jsr print_two_spaces
+    ldx source_drive
+    dex
+    jsr print_drive_speed
+
+    lda #5
+    ldx #3
+    jsr ui_set_cursor
     lda #<copy_to_label
     ldy #>copy_to_label
     jsr ui_print_z
     lda target_drive
     jsr ui_print_u8
-    jsr ui_print_eol
-    lda #<copy_sectors_label
-    ldy #>copy_sectors_label
+    jsr print_two_spaces
+    ldx target_drive
+    dex
+    jsr print_drive_capacity
+    jsr print_two_spaces
+    ldx target_drive
+    dex
+    jsr print_drive_speed
+
+    lda #8
+    ldx #11
+    jsr ui_set_cursor
+    lda #<confirm_data_title
+    ldy #>confirm_data_title
+    jsr ui_print_z
+
+    lda #9
+    ldx #4
+    jsr ui_set_cursor
+    lda #<confirm_geometry_label
+    ldy #>confirm_geometry_label
+    jsr ui_print_z
+    ldx source_drive
+    dex
+    lda geo_tracks,x
+    jsr ui_print_u8
+    lda #'X'
+    jsr ui_print_char
+    ldx source_drive
+    dex
+    lda geo_sides,x
+    jsr ui_print_u8
+    lda #'X'
+    jsr ui_print_char
+    ldx source_drive
+    dex
+    lda geo_spt_lo,x
+    ldy geo_spt_hi,x
+    jsr ui_print_u16
+    lda #<confirm_geometry_sep
+    ldy #>confirm_geometry_sep
+    jsr ui_print_z
+    ldx source_drive
+    dex
+    lda geo_bps_lo,x
+    ldy geo_bps_hi,x
+    jsr ui_print_u16
+    lda #<confirm_bytes_suffix
+    ldy #>confirm_bytes_suffix
+    jsr ui_print_z
+
+    lda #10
+    ldx #4
+    jsr ui_set_cursor
+    lda #<confirm_sectors_label
+    ldy #>confirm_sectors_label
     jsr ui_print_z
     ldx source_drive
     dex
     lda geo_total_lo,x
     ldy geo_total_hi,x
     jsr ui_print_u16
-    jsr ui_print_eol
-    lda #<copy_banks_label
-    ldy #>copy_banks_label
+
+    lda #11
+    ldx #4
+    jsr ui_set_cursor
+    lda #<confirm_buffer_label
+    ldy #>confirm_buffer_label
     jsr ui_print_z
     lda copy_required_banks
     jsr ui_print_u8
@@ -1937,18 +2050,33 @@ no_format:
     jsr ui_print_char
     lda mem_usable_banks
     jsr ui_print_u8
-    jsr ui_print_eol
+
+    lda #12
+    ldx #4
+    jsr ui_set_cursor
+    lda #<confirm_passes_label
+    ldy #>confirm_passes_label
+    jsr ui_print_z
     lda copy_single_pass
     beq confirm_multi_pass
-    lda #<copy_one_pass
-    ldy #>copy_one_pass
+    lda #<confirm_one_pass
+    ldy #>confirm_one_pass
     jsr ui_print_z
     jmp confirm_pass_done
 confirm_multi_pass:
-    lda #<copy_multi_pass
-    ldy #>copy_multi_pass
+    lda #<confirm_many_passes
+    ldy #>confirm_many_passes
     jsr ui_print_z
 confirm_pass_done:
+
+    lda #15
+    ldx #4
+    jsr ui_set_cursor
+    jsr print_format_state
+
+    lda #16
+    ldx #4
+    jsr ui_set_cursor
     lda #<verify_label
     ldy #>verify_label
     jsr ui_print_z
@@ -1963,14 +2091,25 @@ confirm_verify_no:
     ldy #>no_label
     jsr ui_print_z
 confirm_verify_done:
-    jsr ui_print_eol
-    jsr print_format_state
-    jsr ui_print_eol
-    lda #<copy_warning
-    ldy #>copy_warning
+
+    lda #18
+    ldx #4
+    jsr ui_set_cursor
+    lda #<copy_warning_overwrite
+    ldy #>copy_warning_overwrite
     jsr ui_print_z
-    lda #<continue_prompt
-    ldy #>continue_prompt
+    lda #19
+    ldx #8
+    jsr ui_set_cursor
+    lda #<copy_warning_deleted
+    ldy #>copy_warning_deleted
+    jsr ui_print_z
+
+    lda #21
+    ldx #3
+    jsr ui_set_cursor
+    lda #<(continue_prompt+1)
+    ldy #>(continue_prompt+1)
     jmp ui_print_z
 .endproc
 
