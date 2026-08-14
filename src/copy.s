@@ -42,10 +42,10 @@
 
 .import sio_read_sector
 .import sio_write_sector
+.import sio_sector_buf
 .import sio_write_percom
 .import sio_format_disk
 .import sio_result
-.import sio_sector_buf
 .import sio_sector_lo
 .import sio_sector_hi
 .import sio_length_lo
@@ -54,6 +54,7 @@
 .import sio_format_command
 
 .import copy_ui_progress
+.import copy_ui_prepare_data
 
 .export copy_prepare
 .export copy_validate_target
@@ -518,6 +519,9 @@ retry:
     lda #COPY_READ_ERROR
     jmp remember_io_error
 read_ok:
+    ; Podglad jest tworzony w tej samej petli, ktora i tak przenosi sektor ze
+    ; scratch do bankowanej pamieci. Nie ma dodatkowego przebiegu po danych.
+    jsr copy_ui_prepare_data
     lda #<sio_sector_buf
     ldy #>sio_sector_buf
     jsr buffer_store
@@ -531,11 +535,15 @@ stored:
     rts
 .endproc
 
-; Zapisuje biezaca porcje z bufora komenda $57 z weryfikacja stacji.
+; Zapisuje biezaca porcje z bufora komenda PUT $50. Gdy uzytkownik wlaczyl W,
+; osobny etap ponownie odczyta cel i porowna cala porcje bajt po bajcie.
 .proc copy_write_all
     jsr begin_transfer
 sector_loop:
     jsr set_sector_length
+    ; Ladowanie sektora z banku jednoczesnie wypelnia okno podgladu i scratch,
+    ; z ktorego niezalezny sterownik SIO wykona zapis.
+    jsr copy_ui_prepare_data
     lda #<sio_sector_buf
     ldy #>sio_sector_buf
     jsr buffer_load
@@ -576,6 +584,7 @@ retry:
     lda #COPY_VERIFY_IO
     jmp remember_io_error
 read_ok:
+    jsr copy_ui_prepare_data
     jsr buffer_compare
     bcc verified
     lda #COPY_VERIFY_DATA

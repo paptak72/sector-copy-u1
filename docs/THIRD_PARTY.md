@@ -24,6 +24,14 @@ są warstwa wywołań sterownika, zapamiętywanie profilu każdej stacji,
 prezentacja rzeczywistego trybu `FAST`/`STD`, logika kopiowania oraz dodatkowe
 rozpoznawanie urządzenia i geometrii HyperXF.
 
+Standardowa ścieżka wywołuje główne wejście automatyczne. Sonda gęstości
+XF551 korzysta ponadto z opisanego w oryginalnym `hisiocode-main.src` wejścia
+`DOHIDET`: parametry A=1 i X=1 wykonują jedną próbę bez zmiany prędkości, ale
+z pełnym sprzątaniem POKEY i VBI. Jest to potrzebne, ponieważ prawidłowy ED
+celowo zwraca dla `READ 4/256` krótszą ramkę; zwykłe ponowienia powtarzałyby
+oczekiwany timeout. Adres `$3A3F` wynika dokładnie z wymienionego niżej buildu
+`START=$3985` i jest kontrolowany przez testy mapy oraz źródeł.
+
 Do programu dołączony jest plik:
 
 ```text

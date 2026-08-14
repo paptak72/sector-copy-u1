@@ -8,12 +8,14 @@
 ; Rozdzielenie danych na osobne tablice pol jest na 6502 mniejsze i szybsze
 ; niz mnozenie indeksu przez rozmiar struktury.
 ;
-; Geometria zwyklych stacji pochodzi najpierw z GET PERCOM ($4E). Gdy starsza
-; stacja nie zna PERCOM, geo_set_fallback interpretuje pierwszy bajt STATUS i
-; tworzy jeden z klasycznych formatow SD/ED/DD. HyperXF jest wyjatkiem: jego
-; PERCOM zwraca ostatnia konfiguracje ustawiona komenda O, a nie opis nosnika.
-; main.s wymusza wiec STATUS U i bada rzeczywiste naglowki sciezek komenda $67,
-; co pozwala rozpoznac wszystkie formaty od 90 KB do 720 KB bez zgadywania.
+; Geometria zwyklych stacji powstaje najpierw z bitow koncowego STATUS. GET
+; PERCOM ($4E) doprecyzowuje liczbe sciezek i stron tylko wtedy, gdy jego klasa
+; nosnika zgadza sie z tym wynikiem. Jest to konieczne m.in. w XF551, gdzie po
+; samym READ 1 oba zapytania moga jeszcze opisywac przejsciowy ED. main.s
+; wykonuje dla tej rodziny READ 4/256 i ponowny STATUS przed wywolaniem modulu.
+; HyperXF jest wyjatkiem wymagajacym jeszcze aktywnego badania: main.s wymusza
+; STATUS U i analizuje rzeczywiste naglowki sciezek komenda $67. Pozwala to
+; rozpoznac wszystkie formaty od 90 KB do 720 KB bez zgadywania.
 ;
 ; Liczba sektorow jest 16-bitowa i wynosi tracks * sides * sectors-per-track.
 ; Rozmiar obrazu nie jest po prostu total*bps: sektory startowe 1..3 maja
@@ -93,10 +95,15 @@ loop:
 ; Plan awaryjny na podstawie STATUS.
 ; Wejscie: X = indeks stacji 0..7, sio_status_buf zawiera odpowiedz $53.
 ;
-; Bit 7 pierwszego bajtu oznacza enhanced density (26x128), a bit 5 double
-; density (18x256). Brak obu oznacza single density (18x128). Wszystkie trzy
-; profile zakladaja 40 sciezek i jedna strone, bo STATUS nie przekazuje tych
-; wielkosci. geo_percom_ok pozostaje zerem, co widac w menu jako profil F.
+; Bit 5 pierwszego bajtu oznacza sektor dluzszy niz 128 bajtow i dlatego ma
+; pierwszenstwo przed bitem 7. Jest to istotne dla mieszanej odpowiedzi $A0:
+; MyDOS i QMEG klasyfikuja taki nosnik jako DD, nie ED. Standardowy XF551
+; typowo zwraca $20 albo $60; kolejnosc pozostaje jednak uniwersalna i zgodna
+; z historycznymi sterownikami. Dopiero przy wyzerowanym bicie 5 bit 7 oznacza
+; enhanced density (26x128); brak obu oznacza single density (18x128).
+; Wszystkie trzy profile zakladaja 40 sciezek i jedna strone, bo STATUS nie
+; przekazuje tych wielkosci. geo_percom_ok pozostaje zerem, co widac w menu
+; jako profil F.
 .proc geo_set_fallback
     lda #1
     sta geo_present,x
@@ -113,10 +120,14 @@ loop:
     lda #40
     sta geo_speed_div,x
 
+    ; Najpierw bit 5. Test BMI wykonany jako pierwszy mylil mieszany STATUS
+    ; $A0 z ED, mimo ze ustawiony bit 5 jednoznacznie wymaga sektora 256- lub
+    ; 512-bajtowego.
     lda sio_status_buf
-    bmi enhanced
     and #$20
     bne double
+    lda sio_status_buf
+    bmi enhanced
 
 single:
     lda #18
@@ -189,9 +200,43 @@ check_256:
     beq accepted
 check_512:
     lda sio_percom_buf+7
-    bne invalid
+    beq accepted
+
+invalid:
+    sec
+    rts
 
 accepted:
+    ; STATUS jest koncowym wynikiem identyfikacji nosnika. W XF551 main.s
+    ; pobral go ponownie po sondzie READ 4, w innych stacjach pochodzi z
+    ; klasycznego READ 1. PERCOM nie moze zmienic tej klasy, poniewaz w czesci
+    ; stacji opisuje ostatnio wykryty LUB wybrany do formatowania profil.
+    ;
+    ; Bit 5 STATUS oznacza DD i ma pierwszenstwo takze wtedy, gdy bit 7 jest
+    ; rownoczesnie ustawiony (np. w odpowiedzi $A0). Wtedy PERCOM musi miec sektor
+    ; dluzszy niz 128 bajtow (256 albo 512). Dopiero bez bitu 5 wymagamy
+    ; sektora 128-bajtowego i rozrozniamy SD/ED za pomoca bitu 7 oraz SPT.
+    lda sio_status_buf
+    and #$20
+    beq status_128
+    lda sio_percom_buf+6
+    beq invalid
+    bne density_agrees
+status_128:
+    lda sio_percom_buf+6
+    bne invalid
+    lda sio_status_buf
+    bmi status_ed
+    lda sio_percom_buf+3
+    cmp #26
+    beq invalid
+    bne density_agrees
+status_ed:
+    lda sio_percom_buf+3
+    cmp #26
+    bne invalid
+
+density_agrees:
     lda sio_percom_buf
     sta geo_tracks,x
     lda sio_percom_buf+4
@@ -212,9 +257,6 @@ accepted:
     sta geo_percom_ok,x
     jsr geo_calculate_total
     clc
-    rts
-invalid:
-    sec
     rts
 .endproc
 
@@ -246,11 +288,8 @@ invalid:
     sta geo_speed_kind,x
     rts
 xf:
-    lda #16
-    sta geo_speed_div,x
     lda #2
-    sta geo_speed_kind,x
-    rts
+    bne speed_16
 turbo:
     lda #6
     sta geo_speed_div,x
@@ -258,10 +297,11 @@ turbo:
     sta geo_speed_kind,x
     rts
 warp:
+    lda #4
+speed_16:
+    sta geo_speed_kind,x
     lda #16
     sta geo_speed_div,x
-    lda #4
-    sta geo_speed_kind,x
     rts
 standard:
     lda #0

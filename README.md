@@ -40,9 +40,13 @@ każdego prawidłowo rozpoznanego formatu obsługiwanego przez program i stację
 ## Jak działa program
 
 1. Skanuje D1:–D8: i pozwala wybrać tylko stacje, które odpowiedziały.
-2. Dla źródła odczytuje sektor 1, STATUS i PERCOM, negocjuje szybkie SIO,
-   a w HyperXF dodatkowo sprawdza rzeczywistą liczbę ścieżek. Na tej podstawie
-   ustala rozmiar sektora, liczbę sektorów, gęstość i geometrię nośnika.
+2. Dla źródła odczytuje sektor 1 i pierwszy STATUS oraz negocjuje szybkie SIO.
+   W standardowym XF551 nośnik jest dodatkowo badany przez pojedynczy
+   `READ 4/256` i drugi STATUS; dopiero ten wynik rozstrzyga SD/ED/DD. PERCOM
+   doprecyzowuje geometrię tylko wtedy, gdy nie przeczy końcowemu STATUS.
+   W HyperXF program sprawdza rzeczywistą liczbę ścieżek. Standardowy XF551
+   nie rozróżnia logicznie jednej i dwóch stron DD, dlatego kopier przyjmuje
+   domyślne 180 KB; użytkownik może świadomie wybrać 360 KB klawiszem `G`.
 3. Oblicza dostępną pojemność bufora. W trybie pełnym wykrywa fizyczne banki
    PORTB i wykorzystuje także pamięć rozszerzoną; w trybie zachowania DOS-u
    ogranicza się do bezpiecznego okna 16 KB pamięci głównej.
@@ -51,15 +55,18 @@ każdego prawidłowo rozpoznanego formatu obsługiwanego przez program i stację
    automatycznie dzieli kopię na przebiegi zawierające pełne sektory.
 5. Po zakończeniu odczytu może sformatować dysk docelowy zgodnie z geometrią
    źródła albo zachować istniejący format po sprawdzeniu jego zgodności.
-6. Zapisuje sektory na cel komendą SIO z weryfikacją wykonywaną przez stację.
-   Opcjonalnie ponownie odczytuje całą kopię i porównuje każdy bajt z buforem.
+6. Zapisuje sektory na cel komendą PUT `$50`. Opcjonalnie ponownie odczytuje
+   całą kopię i porównuje każdy bajt z buforem źródła.
 7. Po błędzie celu zachowuje dane bieżącego przebiegu, aby można było ponowić
    formatowanie lub zapis. Po udanej kopii jednoprzebiegowej pozwala nagrać
    z tego samego bufora następne dyskietki bez ponownego czytania źródła.
 
 Podczas odczytu, zapisu i weryfikacji program pokazuje numer sektora, jego
-zawartość jako pełny zestaw znaków ATASCII, faktycznie używaną prędkość SIO
-oraz osobne paski postępu bieżącej ścieżki i całej dyskietki.
+surową zawartość jako kody ekranowe Atari, faktycznie używaną prędkość SIO
+oraz osobne paski postępu bieżącej ścieżki i całej dyskietki. Obszar danych
+ma stałą szerokość 32 znaków i własną, wyśrodkowaną ramkę. Podgląd powstaje
+w obowiązkowej pętli przenoszącej sektor do lub z pamięci rozszerzonej, dlatego
+nie wymaga osobnej kopii ani konwersji między kolejnymi poleceniami stacji.
 
 ## Autorstwo i wykorzystane procedury
 
@@ -84,13 +91,13 @@ są opisane w [`docs/THIRD_PARTY.md`](docs/THIRD_PARTY.md). Highspeed SIO jest
 udostępniany na warunkach GPL-2.0-or-later, dlatego cały połączony program
 Sector Copy U1 jest publikowany na tych samych warunkach.
 
-## Stan projektu: 0.6.8
+## Stan projektu: 0.6.9 (wersja testowa)
 
 Aktualna wersja zawiera:
 
-- wariant B menu: dwa symetryczne, poszerzone panele `ZRODLO` i `CEL`, wyraźne
-  pole kopiowania oraz oddzielna, uporządkowana sekcja ustawień; litery skrótów
-  `Z/C/K/F/W/S/P/Q` są pokazane w inverse;
+- wariant C3 menu: jedna pełnoekranowa konstrukcja 40×24 z połączonymi
+  semigraficznie panelami `ZRODLO` i `CEL`, wbudowanym polem kopiowania oraz
+  sekcją ustawień; litery skrótów `Z/C/K/F/W/S/G/P/Q` są pokazane w inverse;
 - opisowy wariant A informacji o nośniku: numer stacji i pojemność, pełna
   nazwa gęstości, geometria, liczba sektorów oraz protokół SIO w osobnych
   wierszach obu paneli;
@@ -106,8 +113,9 @@ Aktualna wersja zawiera:
   a `SELECT` anuluje lub wraca do menu;
 - stockowy, wycentrowany glif pionowej krawędzi, poprawny również na pierwszym
   ekranie wyboru trybu i w trybie zachowania DOS-u;
-- inspirowany kopierem QMEG-a ekran bieżącego sektora: wyśrodkowana siatka
-  pełnego ATASCII, numer szesnastkowy, odwrócony pasek etapu oraz dwa paski:
+- inspirowany kopierem QMEG-a ekran bieżącego sektora: surowe kody ekranowe
+  danych w wyśrodkowanym oknie 32-kolumnowym, numer szesnastkowy, odwrócony
+  pasek etapu oraz dwa paski:
   bieżącej ścieżki i całej dyskietki, odświeżane po każdym sektorze;
 - osobne, czyste ekrany wszystkich próśb o włożenie lub sprawdzenie nośnika;
 - skan D1:-D8: oraz wybór źródła i celu wyłącznie spośród stacji, które
@@ -141,8 +149,9 @@ Aktualna wersja zawiera:
 - pełny odczyt źródła, opcjonalne formatowanie celu, zapis i porównanie
   wszystkich bajtów;
 - trzy próby każdego odczytu i zapisu;
-- zapis komendą `$57`, czyli z dodatkową weryfikacją wykonywaną przez stację;
-- opcjonalną końcową weryfikację całej kopii;
+- zapis komendą PUT `$50`; wcześniejszą podwójną weryfikację każdego sektora
+  przez `$57` zastępuje opcjonalna, silniejsza końcowa weryfikacja całej kopii,
+  która ponownie odczytuje cel i porównuje wszystkie bajty z buforem;
 - ponowny zapis bieżącej porcji bez ponownego czytania źródła po błędzie celu,
   formatowania, zapisu albo weryfikacji;
 - zapis następnych dyskietek docelowych z zachowanego bufora po udanej kopii
@@ -176,10 +185,10 @@ przejęcie. Obsługa RAM-dysków nie jest na tym etapie wykonywana.
 Obszar `$3600-$37FF` pozostaje zarezerwowany na teksty interfejsu i pomocniczy
 kod pasków. Stały stan zaczyna się od `$3800`, sterownik
 HSIO 1.33 zajmuje `$3985-$3D09`, małe procedury interfejsu `$3D0A-$3DFF`,
-a jeden wspólny sektor roboczy 512 bajtów `$3E00-$3FFF`. Kod i teksty zaczynają
-się od `$8000`.
-Weryfikacja porównuje dane celu bezpośrednio z bieżącym bankiem, dlatego drugi
-bufor sektorowy nie jest potrzebny. Przed otwarciem ekranu ustawiane jest
+a jeden sektor pomocniczy 512 bajtów `$3E00-$3FFF` dla zwykłego READ/PUT,
+sond geometrii, diagnostyki i odpowiedzi FORMAT. Weryfikacja porównuje ten
+bufor bezpośrednio z bieżącym bankiem, dlatego drugi bufor sektorowy nie jest
+potrzebny. Kod i teksty zaczynają się od `$8000`. Przed otwarciem ekranu ustawiane jest
 `APPMHI`, aby standardowy handler `E:` nie umieścił ekranu lub display listy
 na programie. Zakres `$4000-$7FFF` pozostaje wyłącznie oknem bufora bankowanego.
 
@@ -187,29 +196,32 @@ na programie. Zakres `$4000-$7FFF` pozostaje wyłącznie oknem bufora bankowaneg
 
 Podczas odczytu, zapisu i końcowej weryfikacji ekran pokazuje:
 
-- wyśrodkowane `SEKTOR $hhhh / $hhhh`;
+- `SEKTOR $hhhh / $hhhh` i rzeczywisty tryb `SIO FAST/STD` w górnej krawędzi
+  okna danych;
 - odwrócony pasek aktualnego etapu: odczyt, zapis albo weryfikacja;
-- wyśrodkowane 4, 8 albo 16 wierszy po 32 znaki dla sektorów 128, 256 albo
-  512 bajtów;
-- wszystkie 256 wartości bajtu przeliczone na właściwe kody ekranowe ATASCII,
-  łącznie ze znakami sterującymi, semigrafiką i inwersją;
+- wyśrodkowane okno o stałej szerokości 32 znaków i wysokości 4, 8 albo 16
+  wierszy dla sektorów 128, 256 albo 512 bajtów;
+- surowe bajty sektora interpretowane bezpośrednio jako kody ekranowe Atari;
+  bit 7 naturalnie wybiera odmianę znaku w negatywie;
 - pasek `S`, który skaluje 18 sektorów SD/DD albo 26 sektorów MD na pełne
   32 pola, dochodzi do prawego końca wraz z ostatnim sektorem ścieżki i wtedy
   zeruje się dla następnej;
 - pasek `D`, który narasta przez wszystkie sektory całej dyskietki i zachowuje
   właściwą pozycję między porcjami bufora.
 
-Podgląd jest zapisywany bezpośrednio do pamięci standardowego ekranu GR.0,
-dzięki czemu aktualizacja po każdym sektorze nie wymaga setek osobnych wywołań
-CIO. Krótsze sektory nie są otoczone polem sztucznych kropek: 128 bajtów
-zajmuje centralne 4×32 znaki, 256 bajtów 8×32, a 512 bajtów 16×32. Program
-ustawia `LMARGN=1` i `RMARGN=38`, usuwa więc standardowy lewy margines dwóch
-kolumn i pozostawia skrajne kolumny na ramkę. W trybie zachowania DOS-u
-poprzednie marginesy, kolory i stan kursora są odtwarzane.
+Sterownik odbiera sektor do scratch `$3E00-$3FFF`. Jedna pętla przenosi potem
+grupy po 32 bajty między scratch a bankiem pamięci rozszerzonej i równocześnie
+zapisuje je do kolejnych 40-bajtowych wierszy ekranu. Zostawia to po cztery
+kolumny marginesu z każdej strony oraz nienaruszone piony ramki. Brak osobnej
+konwersji 128–512 bajtów chroni okno przeplotu standardowego XF551. Program
+ustawia `LMARGN=1` i
+`RMARGN=38`, usuwa więc standardowy lewy margines dwóch kolumn i pozostawia
+skrajne kolumny na ramkę. W trybie zachowania DOS-u poprzednie marginesy,
+kolory i stan kursora są odtwarzane.
 
 ## Szybkie SIO
 
-Wersja 0.6.8 nie wywołuje systemowego `SIOV` dla operacji stacji. Każdy
+Wersja 0.6.9 nie wywołuje systemowego `SIOV` dla operacji stacji. Każdy
 STATUS, PERCOM, sektor i format przechodzi przez niezależny sterownik POKEY
 Highspeed SIO 1.33 Matthiasa Reichla (HiassofT). Dzięki temu wynik nie zależy od
 tego, czy komputer ma zwykły OS, QMEG, BIOS Ultimate 1MB albo szybki sterownik
@@ -228,6 +240,12 @@ ramkę szybko, 1050 Turbo ustawia bit 7 `DAUX2`, XF551 bit 7 rozkazu, a Happy
 Warp bit 5 rozkazu. Sterownik ma własne ponowienia i drugą serię prób w
 standardowej prędkości po błędzie szybkiej transmisji.
 
+Jedynym celowym wyjątkiem od zwykłych ponowień jest sonda XF551 `READ 4/256`.
+Na prawdziwym ED stacja wysyła tylko 128 bajtów, więc timeout jest oczekiwanym
+skutkiem ubocznym, a wielokrotne próby jedynie wydłużałyby skan. Program używa
+wtedy udokumentowanego wewnętrznego wejścia sterownika z jedną próbą i bez
+zmiany prędkości, po czym zawsze wykonuje normalny STATUS.
+
 HyperXF Stefana Dorndorfa jest rozpoznawana po własnej sygnaturze STATUS `$D9`.
 Panel pokazuje `HXF` wraz z zapamiętanym dzielnikiem, np. `TURBO HXF9`;
 `TURBO HXF40`
@@ -237,6 +255,30 @@ Sama nazwa profilu nie dowodzi, że każda operacja przeszła szybko, dlatego
 podczas transferu obok numeru sektora działa wskaźnik `FAST`/`STD`. Jest on
 aktualizowany po każdym rozkazie z rzeczywistej wartości użytej przez
 sterownik i ujawnia automatyczny fallback do prędkości standardowej.
+
+W zwykłej stacji GET PERCOM również nie jest bezwarunkowo nadrzędny: standardowy
+XF551 może zwrócić format ostatnio wykryty albo ostatnio ustawiony przez SET
+PERCOM. Co ważniejsze, po samym `READ 1` fizyczny DD pozostaje w tej stacji
+w stanie ED, więc zarówno STATUS, jak i PERCOM mogą zgodnie, lecz błędnie
+opisywać 26×128. Sektory startowe są w ROM-ie wyłączone z testu długości.
+Program rozpoznaje rodzinę XF po trzecim bajcie STATUS `$FE` lub profilu
+High Speed, wykonuje `READ 4/256`, czeka dziewięć ramek i pobiera drugi STATUS.
+Dopiero potem przyjmuje PERCOM, o ile jego klasa długości sektora zgadza się
+z tym końcowym wynikiem; dla sektorów 128-bajtowych kontrolowane jest również
+rozróżnienie 18/26 sektorów na ścieżkę.
+Sprzeczny blok jest odrzucany, a panel pokazuje bezpieczny profil `F` wyznaczony
+ze STATUS.
+
+Standardowy XF551 nie potrafi rozpoznać, czy format DD wykorzystuje jedną,
+czy dwie strony, i zgłasza dwie strony także dla dyskietki 180 KB. Odczyt
+sektora z drugiej strony nie jest dowodem: mogą tam pozostać prawidłowe dane
+z wcześniejszego formatowania. Dlatego kopier celowo przyjmuje najczęstszy
+profil 40T/1S, 720 sektorów i 180 KB. Dla rzeczywistej dyskietki dwustronnej
+użytkownik wybiera w menu `G — GEOMETRIA`; panel zmienia się wtedy na 40T/2S,
+1440 sektorów i 360 KB. Wybrana geometria obowiązuje odczyt, formatowanie,
+zapis i weryfikację, a zmiana źródła albo ponowny skan przywraca 180 KB.
+Ta sama zasada obejmuje niejednoznaczny wynik HyperXF: fragment starych
+nagłówków na dalszej stronie nie blokuje już kopiowania źródła 180 KB.
 
 W przypadku HyperXF program nie ufa zwrotnemu GET PERCOM jako opisowi aktualnej
 dyskietki: firmware może zwracać ostatni blok ustawiony przez SET PERCOM.
@@ -350,11 +392,15 @@ Budowanie i testy:
 make test
 ```
 
-Wynik:
+Wyniki:
 
 ```text
 build/sector-copy-u1.xex
+build/xf551-density-diagnostic.xex
 ```
+
+Sam pomocniczy ekran diagnostyczny można zbudować poleceniem
+`make diagnostic`.
 
 Powtarzalne obrazy ATR do emulatora:
 
@@ -373,19 +419,19 @@ oraz wszystkich pełnych geometrii HyperXF 5,25 i 3,5 cala w katalogu
   HyperXF Stefana Dorndorfa; poprawnie zakończono kopiowanie zarówno **ze
   stacji HyperXF**, jak i **na tę stację** dla dyskietek SD 90 KB, DD 180 KB
   oraz DD 720 KB;
-- wersja 0.6.8 uruchamia się i działa na tym zestawie również wtedy, gdy przed
+- wersja 0.6.9 uruchamia się i działa na tym zestawie również wtedy, gdy przed
   startem XEX aktywny jest BASIC; próba na standardowym Atari 65XE z 64 KB
   pozostaje do wykonania;
 - samodzielny start XEX po inicjalizacji Atari OS bez DOS-u;
 - fizyczne wykrycie 65 okien bufora na emulowanym 1088XE;
 - pełne kopiowanie SD 720 sektorów D1:→D2: z końcową weryfikacją;
 - domyślne formatowanie celu przed zapisem i potwierdzanie klawiszem `START`;
-- klawisze `Z/C/K/F/W/S/T/P/Q` działające bez `RETURN` przez handler `K:`;
+- klawisze `Z/C/K/F/W/S/G/P/Q` działające bez `RETURN` przez handler `K:`;
 - `START` i `SELECT` odczytywane bezpośrednio z klawiszy konsoli, z kontrolą
   ich wcześniejszego zwolnienia;
 - co najmniej sekundowe wyświetlanie komunikatu formatowania oraz ekranów
   sukcesu, błędu i informacji przed przyjęciem kolejnego klawisza;
-- odświeżanie numeru sektora w hex, pełnej siatki ATASCII i dolnego wskaźnika
+- odświeżanie numeru sektora w hex, surowej zawartości ekranowej i wskaźników
   po każdym z 720 sektorów podczas odczytu, zapisu i weryfikacji;
 - zielona paleta odczytu, czerwona paleta formatowania i zapisu, żółta paleta
   weryfikacji oraz powrót do granatowej palety na ekranach komunikatów;
@@ -416,8 +462,12 @@ oraz wszystkich pełnych geometrii HyperXF 5,25 i 3,5 cala w katalogu
 - W trybie zachowania DOS-u pamięć rozszerzona nie jest badana ani używana.
 - Do kopii HyperXF 720 KB w jednym przebiegu potrzeba co najmniej 45 okien
   bufora. Ultimate 1MB w trybie 1088K udostępnia programowi 65.
-- Wersja 0.6.8 wymaga prób na dyskietkach roboczych przed użyciem z ważnymi
+- Wersja 0.6.9 wymaga prób na dyskietkach roboczych przed użyciem z ważnymi
   archiwami.
+- Przy standardowym XF551 oraz niejednoznacznym wyniku HyperXF format DD jest
+  domyślnie traktowany jako 180 KB.
+  Dla rzadkiej dyskietki dwustronnej 360 KB trzeba przed kopiowaniem nacisnąć
+  `G` i sprawdzić w panelu 40T/2S oraz 1440 sektorów.
 - Atari800 potrafi odpowiedzieć na rozpoznanie 1050 Turbo, lecz nie emuluje
   poprawnie dalszego numerowania sektorów z bitem Turbo. Nie zastępuje więc
   testu szybkiego transferu z prawdziwą stacją.
@@ -430,7 +480,10 @@ oraz wszystkich pełnych geometrii HyperXF 5,25 i 3,5 cala w katalogu
 Plan testów sprzętowych znajduje się w
 [`docs/HARDWARE_TEST_PLAN.md`](docs/HARDWARE_TEST_PLAN.md).
 
-Szczegóły protokołu i uzasadnienie wykrywania geometrii opisuje
+Sekwencję `READ 1 → STATUS`, wyjątek `READ 4` standardowego XF551, kontrolę
+PERCOM oraz ręczny wybór pojemności 180/360 KB opisuje
+[`docs/DETEKCJA_GESTOSCI.md`](docs/DETEKCJA_GESTOSCI.md). Rozszerzenia właściwe
+dla ROM-u Stefana Dorndorffa opisuje
 [`docs/HYPERXF_GEOMETRY.md`](docs/HYPERXF_GEOMETRY.md).
 
 Pochodzenie i sposób odtworzenia zewnętrznego sterownika opisuje

@@ -21,6 +21,7 @@
 ; Procedury sektorowe dodatkowo czytaja sio_sector_* i sio_length_*.
 
 .import hsio_auto
+.import hsio_probe_once
 .import hsio_speed_table
 
 .export sio_status
@@ -28,6 +29,7 @@
 .export sio_hyperxf_track_info
 .export sio_get_percom
 .export sio_read_boot_sector
+.export sio_probe_xf_dd
 .export sio_read_sector
 .export sio_write_sector
 .export sio_write_percom
@@ -89,6 +91,10 @@ sio_sector_buf:  .res 512
     ; stacji, ma wlasne ponowienia oraz powrot do predkosci standardowej, wiec
     ; dzialanie nie zalezy od poprawek SIO w ROM-ie systemowym.
     jsr hsio_auto
+    ; Przejscie bezposrednio do wspolnego zapisu wyniku.
+.endproc
+
+.proc sio_capture_result
     ; Profil wykryty dla Dn: nie dowodzi jeszcze, ze konkretny sektor przeszedl
     ; szybko: po bledach sterownik moze ponowic go standardowo. Kopia MYSPEED
     ; zasila wskaznik FAST/STD na ekranie i pozwala odroznic opoznienie obrotowe
@@ -212,9 +218,13 @@ unknown:
     jmp sio_finish
 .endproc
 
-; GET PERCOM ($4E) pobiera 12-bajtowy opis fizycznej geometrii nośnika.
-; To jedyna wiarygodna droga do formatow 360/720 KB: cztery bajty STATUS nie
-; koduja liczby sciezek, stron ani 16-bitowej liczby sektorow na sciezke.
+; GET PERCOM ($4E) pobiera 12-bajtowa konfiguracje stacji. Nie jest samodzielna
+; identyfikacja nosnika: czesc firmware'ow zwraca ostatnio wybrany format, a
+; XF551 nie rozroznia pewnie jednej i dwoch stron DD. main.s ustala klase przez
+; READ 1 + STATUS, a w rozpoznanej rodzinie XF dodatkowo przez READ 4 + drugi
+; STATUS. Dopiero potem sprawdza zgodnosc bloku. Liczba stron standardowego
+; XF551 jest wyborem uzytkownika, poniewaz odczyt sektora granicznego nie
+; rozstrzyga, czy znalezione tam stare dane naleza do biezacego formatu.
 .proc sio_get_percom
     jsr sio_begin
     lda #CMD_PERCOM
@@ -258,8 +268,46 @@ unknown:
     jmp sio_finish
 .endproc
 
-; Odczyt jednego sektora do wspolnego bufora $3E00-$3FFF. Numer i dlugosc sa
+; Jednorazowa prowokacja automatycznego wykrywania DD w standardowym XF551.
+; Firmware tej stacji po odczycie sektorow 1..3 rozpoznaje jedynie MFM i
+; domyslnie pozostaje w ED. Dopiero sektor 4 podlega kontroli "long sector":
+; fizyczne 256 bajtow przelacza naped na DD, po czym ta sama komenda konczy sie
+; pelna ramka 256 B. Prawdziwy ED wysyla tylko 128 B, wiec komputer oczekujacy
+; 256 B dostaje kontrolowany timeout. Wynik tej komendy nie rozstrzyga niczego;
+; main.s zawsze pobiera po niej nowy STATUS.
+;
+; Zwykle sio_finish celowo nie jest tu uzywane. Jego ponowienia i powrot do
+; standardowej predkosci bylyby potrzebne dla transferu danych, lecz w ED
+; wielokrotnie powtarzalyby oczekiwany timeout. DOHIDET z A=1/X=1 wykonuje
+; dokladnie jedna probe i nadal przywraca POKEY, VBI oraz linie SIO.
+.proc sio_probe_xf_dd
+    jsr sio_begin
+    lda #CMD_READ
+    sta DCOMND
+    lda #SIO_READ
+    sta DSTATS
+    lda #<sio_sector_buf
+    sta DBUFLO
+    lda #>sio_sector_buf
+    sta DBUFHI
+    lda #1
+    sta DTIMLO
+    lda #0
+    sta DBYTLO
+    lda #1
+    sta DBYTHI
+    lda #4
+    sta DAUX1
+    lda #1
+    ldx #1
+    jsr hsio_probe_once
+    jmp sio_capture_result
+.endproc
+
+; Odczyt jednego sektora do wspolnego scratch $3E00-$3FFF. Numer i dlugosc sa
 ; rozdzielone, bo sektory 1..3 maja 128 bajtow, a dalsze rozmiar z PERCOM.
+; buffer.s laczy pozniejsze przeniesienie danych do banku z surowym podgladem
+; w wycentrowanym oknie; nie jest potrzebna osobna konwersja znakow.
 .proc sio_read_sector
     jsr sio_begin
     lda #CMD_READ
@@ -270,12 +318,14 @@ unknown:
     jmp sio_finish
 .endproc
 
-; Zapis jednego sektora. Komenda $57 prosi stacje o zapis z jej wewnetrzna
-; weryfikacja; jest wolniejsza od $50, ale bezpieczniejsza dla starych nosnikow.
-; Opcjonalna weryfikacja programu jest osobnym, pelnym odczytem po zapisie.
+; Zapis jednego sektora komenda PUT $50. Wczesniejsze $57 kazalo stacji po
+; kazdym zapisie wykonac natychmiastowa weryfikacje, po czym program przy
+; aktywnej opcji W i tak czytal cala dyskietke ponownie i porownywal bajty.
+; $50 usuwa ten podwojny koszt; pelna weryfikacja programu pozostaje silniejsza,
+; bo porownuje rzeczywiste dane celu z buforem zrodla.
 .proc sio_write_sector
     jsr sio_begin
-    lda #CMD_WRITE
+    lda #CMD_PUT
     sta DCOMND
     lda #SIO_WRITE
     sta DSTATS

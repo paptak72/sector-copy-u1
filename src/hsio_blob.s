@@ -32,14 +32,22 @@
 
 .export hsio_auto
 .export hsio_direct
+.export hsio_probe_once
 .export hsio_speed_table
 
 hsio_auto        = $3985
 hsio_direct      = $399E
+; Wewnetrzne wejscie DOHIDET jest jawnie opisane w hisiocode-main.src. A=1
+; wybiera jedna probe bez powrotu do innej predkosci, a X=1 jedna probe ramki
+; rozkazu. Uzywamy go tylko do kontrolowanego READ 4 w XF551, gdzie poprawna
+; dyskietka ED celowo wysle krotsza ramke i zwykle wejscie ponawialoby ten
+; oczekiwany timeout przez kilka sekund.
+hsio_probe_once  = $3A3F
 hsio_speed_table = $3D02
 
 ; hsio_auto: glowny punkt wejscia. Rozpoznaje nieznana stacje, potem wykonuje
-; DCB. hsio_direct: wejscie wewnetrzne dla juz wybranego kodu predkosci.
+; DCB. hsio_direct: wejscie dla juz wybranego kodu predkosci. hsio_probe_once:
+; jednokrotne wykonanie z predkoscia ustalona przez poprzedni rozkaz.
 ; speed_table: osiem bajtow, po jednym dla D1:..D8:, kodowanych jako tryb+1.
 
 .segment "HSIO"

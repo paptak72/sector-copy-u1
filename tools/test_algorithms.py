@@ -93,6 +93,34 @@ def nominal_kb(total_sectors: int, bytes_per_sector: int) -> int:
     return total_sectors // {128: 8, 256: 4, 512: 2}[bytes_per_sector]
 
 
+def preview_cells(length: int, data_row: int) -> list[int]:
+    """Adresy ekranu przy lustrze 32 bajty danych -> wiersz 40 kolumn."""
+    return [data_row * 40 + 4 + (i // 32) * 40 + i % 32 for i in range(length)]
+
+
+def percom_density_agrees(status: int, sectors_per_track: int, bps: int) -> bool:
+    """Model rozjemcy: świeży STATUS ma pierwszeństwo przed starym PERCOM."""
+    # MyDOS i QMEG sprawdzaja najpierw bit 5. To celowo klasyfikuje $A0 jako
+    # DD: ustawiony jednoczesnie bit 7 nie moze zmienic sektora 256 B na ED.
+    if status & 0x20:
+        return bps in (256, 512)
+    if status & 0x80:
+        return bps == 128 and sectors_per_track == 26
+    return bps == 128 and sectors_per_track != 26
+
+
+def xf551_status_sequence(media: str) -> tuple[int, int, int]:
+    """Minimalny model przejscia ROM-u XF551 przez READ 1 i READ 4/256."""
+    if media == "SD":
+        return 0x00, 0x8A, 0x00
+    if media == "ED":
+        return 0x80, 0x8A, 0x80
+    if media == "DD":
+        # READ 1 pozostawia przejsciowe ED; sektor 4 wlacza DD i daje sukces.
+        return 0x80, 0x01, 0x60
+    raise ValueError(media)
+
+
 def detected_extended_banks(physical_bank) -> int:
     """Model dwufazowej sondy PORTB: ostatnia sygnatura wygrywa na aliasie."""
     last_signature: dict[object, int] = {}
@@ -130,9 +158,41 @@ for name, (sectors, bps, expected) in CASES.items():
         f"{name}: stream uses {occupied}, expected {logical_banks}"
     )
 
+# Wszystkie kierunki sprzeczności, w tym zgłoszony na sprzęcie DD -> ED.
+assert percom_density_agrees(0x00, 18, 128)
+assert not percom_density_agrees(0x00, 26, 128)
+assert not percom_density_agrees(0x00, 18, 256)
+assert percom_density_agrees(0x80, 26, 128)
+assert not percom_density_agrees(0x80, 18, 128)
+assert not percom_density_agrees(0x80, 18, 256)
+assert percom_density_agrees(0x20, 18, 256)
+assert percom_density_agrees(0x20, 9, 512)
+assert not percom_density_agrees(0x20, 26, 128)
+assert percom_density_agrees(0x60, 18, 256)
+assert not percom_density_agrees(0x60, 26, 128)
+assert not percom_density_agrees(0xA0, 26, 128)
+assert percom_density_agrees(0xA0, 18, 256)
+
+# READ 4 jest wykonywany dla rozpoznanej rodziny XF niezaleznie od pierwszych
+# bitow gestosci. SD/ED moga zakonczyc sama probe timeoutem, lecz rozstrzyga
+# zawsze kolejny STATUS; fizyczny DD musi przejsc z $80 do $60.
+assert xf551_status_sequence("SD") == (0x00, 0x8A, 0x00)
+assert xf551_status_sequence("ED") == (0x80, 0x8A, 0x80)
+assert xf551_status_sequence("DD") == (0x80, 0x01, 0x60)
+
 assert nominal_kb(720, 128) == 90
 assert nominal_kb(1040, 128) == 130
 assert nominal_kb(720, 256) == 180
+
+# Wnetrze podgladu zajmuje zawsze kolumny 4..35. Ramka jest w kolumnach
+# 3 i 36, wiec nawet najwiekszy sektor nie moze jej nadpisac.
+for length, data_row, rows in ((128, 9, 4), (256, 7, 8), (512, 4, 16)):
+    cells = preview_cells(length, data_row)
+    assert len(cells) == 32 * rows
+    assert {cell % 40 for cell in cells} == set(range(4, 36))
+    assert min(cell // 40 for cell in cells) == data_row
+    assert max(cell // 40 for cell in cells) == data_row + rows - 1
+    assert all(cell % 40 not in (0, 3, 36, 39) for cell in cells)
 assert nominal_kb(1440, 256) == 360
 assert nominal_kb(2080, 128) == 260
 assert nominal_kb(2880, 256) == 720
@@ -211,40 +271,19 @@ for line_number, line in enumerate(main_source.splitlines(), 1):
             f"main.s:{line_number}: {len(literal)} columns: {literal!r}"
         )
 
-# Surowy podglad sektora odwzorowuje wszystkie 256 wartosci ATASCII, lacznie
-# ze znakami sterujacymi, semigrafika i negatywem, na kody ekranowe GR.0.
-def atascii_to_screen(value: int) -> int:
-    if value < 0x20 or 0x80 <= value < 0xA0:
-        return value + 0x40
-    if 0x20 <= value < 0x60 or 0xA0 <= value < 0xE0:
-        return value - 0x20
-    return value
-
-
-expected_boundaries = {
-    0x00: 0x40,
-    0x1F: 0x5F,
-    0x20: 0x00,
-    0x5F: 0x3F,
-    0x60: 0x60,
-    0x7F: 0x7F,
-    0x80: 0xC0,
-    0x9F: 0xDF,
-    0xA0: 0x80,
-    0xDF: 0xBF,
-    0xE0: 0xE0,
-    0xFF: 0xFF,
-}
-assert {value: atascii_to_screen(value) for value in expected_boundaries} == (
-    expected_boundaries
-)
-assert ".proc render_sector_atascii" in main_source
-assert "atascii_screen_table:" in main_source
-assert "lda atascii_screen_table,x" in main_source
+# Zwykle READ/PUT wykorzystuje scratch $3E00. Obowiazkowa petla przenoszaca
+# dane do/z banku jednoczesnie kopiuje surowe bajty do wycentrowanego okna
+# szerokosci 32, bez osobnej konwersji. Wysokosci 4/8/16 odpowiadaja dokladnie
+# 128/256/512 bajtom i nie pozwalaja danym wejsc na ramke semigraficzna.
+assert ".proc render_sector_atascii" not in main_source
+assert ".proc restore_sector_frame" not in main_source
+assert ".proc copy_ui_prepare_data" in main_source
+assert ".proc draw_sector_window" in main_source
 assert ".proc store_hex_screen" in main_source
 assert "jsr ui_set_cursor\n    lda copy_current_hi" not in main_source
-assert "PROGRESS_DATA_COL   = 4" in main_source
 assert ".byte 4, 8, 16" in main_source
+assert ".byte <(9*40+4), <(7*40+4), <(4*40+4)" in main_source
+assert "lda #33\n    sta scan_index" in main_source
 
 # Menu musi uzywac niebuforowanej procedury K: w IOCB #1, a nie wejscia
 # wierszowego z kanalu E:. Stockowy glif $7C daje wycentrowany pion ramki
@@ -296,8 +335,9 @@ assert "jmp check_preformatted" in success_path
 assert "jmp format_target" in success_path
 assert "copy_read_all" not in success_path
 
-# Glowne menu ma dwa osobne panele stacji. Asercje obejmuja procedury wyboru,
-# kluczowe etykiety oraz komplet skrotow klawiaturowych obu paneli.
+# Glowne menu tworzy jeden zintegrowany pulpit z dwoma polami stacji. Asercje
+# obejmuja ciagle polaczenia semigraficzne, procedury wyboru, kluczowe etykiety
+# oraz komplet skrotow klawiaturowych obu paneli.
 assert f'title:\n    .byte "SECTOR COPY U1 {version}"' in main_source
 assert '.byte "             Paptak 2026", 0' in main_source
 launch_start = main_source.index(".proc choose_launch_mode")
@@ -307,8 +347,22 @@ launch_title_print = launch_block.index("lda #<title")
 launch_eol = launch_block.index("jsr ui_print_eol", launch_title_print)
 launch_separator = launch_block.index("jsr print_separator", launch_eol)
 assert launch_title_print < launch_eol < launch_separator
-assert ".proc draw_panel_box" in main_source
+assert ".proc draw_main_structure" in main_source
 assert ".proc draw_selected_panel" in main_source
+for semigraphic in (
+    "SCREEN_T_LEFT       = $41",
+    "SCREEN_T_RIGHT      = $44",
+    "SCREEN_CROSS        = $53",
+    "SCREEN_T_TOP        = $57",
+    "SCREEN_T_BOTTOM     = $58",
+):
+    assert semigraphic in main_source
+for separator in ("2*40", "4*40", "10*40", "12*40", "14*40", "20*40"):
+    assert separator in main_source
+assert "lda #39\n    sta scan_index" in main_source
+assert "cpy scan_index" in main_source
+assert "lda #35\n    sta scan_index" in main_source
+assert ".proc screen_next_row" in main_source
 assert '.byte "POJEDYNCZA (SD)", 0' in main_source
 assert '.byte "ROZSZERZ. (ED)", 0' in main_source
 assert '.byte "PODWOJNA (DD)", 0' in main_source
@@ -329,7 +383,7 @@ for panel_line in (
 assert ".proc invert_copy_action" not in main_source
 assert "source_panel_title:\n    .byte 'Z'|$80" in main_source
 assert "target_panel_title:\n    .byte 'C'|$80" in main_source
-assert "copy_action:\n    .byte 'K'|$80" in main_source
+assert "copy_action:\n    .byte \" \", 'K'|$80" in main_source
 assert "verify_label:\n    .byte 'W'|$80" in main_source
 assert "format_label:\n    .byte 'F'|$80" in main_source
 for key in ("Z", "C", "K", "F", "W", "S", "P", "Q"):
@@ -355,8 +409,8 @@ assert main_source.count("ATASCII_ESC, $08") >= 4
 assert main_source.count("ATASCII_ESC, $88") >= 4
 assert "ATASCII_ESC, $09" not in main_source
 assert "ATASCII_ESC, $89" not in main_source
-assert "ldx #12\n    jsr ui_set_cursor\n    lda #<copy_action" in main_source
-assert '.byte "---USTAWIENIA---", 0' in main_source
+assert "ldx #11\n    jsr ui_set_cursor\n    lda #<copy_action" in main_source
+assert '.byte " USTAWIENIA ", 0' in main_source
 assert '.byte "PARAMETRY KOPII", 0' in main_source
 assert '.byte "---NOSNIKI---", 0' in main_source
 assert '.byte "---DANE I PAMIEC---", 0' in main_source
@@ -374,7 +428,7 @@ for confirm_line in (
     "BUFOR 16 KB 45/65",
 ):
     assert len(confirm_line) <= 34, f"confirmation overflow: {confirm_line!r}"
-assert '.byte "SKAN D1-D8...", 0' in main_source
+assert '.byte "SKAN D1-D8", 0' in main_source
 assert "SKAN ZAKONCZONY" not in main_source
 assert ".proc next_detected_drive" in main_source
 assert ".proc ensure_detected_drive" in main_source
@@ -398,10 +452,15 @@ assert "lda sio_length_hi" in buffer_source
 assert "lda DBYTLO" not in buffer_source
 assert "lda DBYTHI" not in buffer_source
 assert ".proc buffer_compare" in buffer_source
+assert "lda #<sio_sector_buf\n    sta buffer_data_ptr" in buffer_source
+assert "lda #>sio_sector_buf\n    sta buffer_data_ptr+1" in buffer_source
 assert "copy_compare_buf" not in buffer_source
 assert ".proc advance_block" in buffer_source
 assert ".proc decrement_block" in buffer_source
-assert "bpl copy_byte" in buffer_source
+assert buffer_source.count("sta (progress_dst_ptr),y") == 3
+assert buffer_source.count("cpy #32") == 3
+assert "adc #40\n    sta progress_dst_ptr" in buffer_source
+assert "sbc #32" in buffer_source
 assert ".proc advance_data" not in buffer_source
 assert ".proc decrement_length" not in buffer_source
 
@@ -415,6 +474,19 @@ blob_source = (root / "src" / "hsio_blob.s").read_text()
 assert ".import hsio_auto" in sio_source
 assert "jsr hsio_auto" in sio_source
 assert "sta sio_actual_mode" in sio_source
+assert ".proc sio_prepare_sector_buffer" not in sio_source
+sector_dcb = sio_source.split(".proc sio_set_sector_dcb", 1)[1].split(
+    ".endproc", 1
+)[0]
+assert "lda #<sio_sector_buf\n    sta DBUFLO" in sector_dcb
+assert "lda #>sio_sector_buf\n    sta DBUFHI" in sector_dcb
+assert copy_source.count("jsr copy_ui_prepare_data") == 3
+assert copy_source.count("lda #<sio_sector_buf\n    ldy #>sio_sector_buf") == 2
+write_sector_proc = sio_source.split(".proc sio_write_sector", 1)[1].split(
+    ".endproc", 1
+)[0]
+assert "lda #CMD_PUT" in write_sector_proc
+assert "CMD_WRITE" not in write_sector_proc
 assert "jsr SIOV" not in sio_source
 assert "sio_get_hsi" not in sio_source
 assert "ldx #7\n    lda #0\nloop:\n    sta hsio_speed_table,x" in sio_source
@@ -430,25 +502,119 @@ assert 'hxf_label:\n    .byte " HXF", 0' in main_source
 assert '"HYPERXF SKEW: ULTRASPEED"' in main_source
 assert "jsr sio_status_force" in main_source
 assert "jsr sio_hyperxf_track_info" in main_source
-# Zgodnie z zachowaniem klasycznych DOS-ow i dokumentacja HyperXF, pierwszy
-# READ sektora 1 ma poprzedzac STATUS, ktory dopiero wtedy raportuje gestosc
-# aktualnie wlozonego nosnika.
+# Klasyczny READ sektora 1 poprzedza pierwszy STATUS. Standardowy XF551 jest
+# obslugiwany dodatkowa prowokacja READ 4 i drugim STATUS jeszcze przed
+# przyjeciem geometrii oraz PERCOM.
 probe_start = main_source.index(".proc probe_drive")
 probe_end = main_source.index("probe_standard:", probe_start)
 probe_prefix = main_source[probe_start:probe_end]
 assert probe_prefix.index("jsr sio_read_boot_sector") < probe_prefix.index("jsr sio_status")
+assert probe_prefix.index("jsr sio_status") < probe_prefix.index(
+    "jsr probe_standard_xf_density"
+)
+# STATUS rozstrzyga klase aktualnego nosnika. Stary albo ustawiony poleceniem
+# WRITE PERCOM profil nie moze nadpisac DD jako ED ani odwrotnie.
+fallback_proc = geometry_source.split(".proc geo_set_fallback", 1)[1].split(
+    ".endproc", 1
+)[0]
+assert fallback_proc.index("and #$20") < fallback_proc.index("bmi enhanced")
+percom_proc = geometry_source.split(".proc geo_set_percom", 1)[1].split(
+    ".endproc", 1
+)[0]
+assert "and #$20" in percom_proc
+assert "bmi status_ed" in percom_proc
+assert "lda sio_percom_buf+6" in percom_proc
+assert "cmp #26" in percom_proc
+assert percom_proc.index("and #$20") < percom_proc.index("density_agrees:")
+assert percom_proc.index("and #$20") < percom_proc.index("bmi status_ed")
+
+# Stockowy XF551 rozpoznaje fizyczny DD dopiero na sektorze >=4. Sonda jest
+# ograniczona do rozpoznanej rodziny XF, ale celowo nie ufa pierwszym bitom
+# gestosci. Wykonuje jedna probe 256 B, a po dziewieciu ramkach pobiera STATUS.
+xf_density = main_source.split(".proc probe_standard_xf_density", 1)[1].split(
+    ".endproc", 1
+)[0]
+assert "and #$A0" not in xf_density
+assert "cmp #$FE" in xf_density
+assert "cmp #$40" in xf_density
+assert "jsr sio_probe_xf_dd" in xf_density
+assert "lda #9\n    jsr wait_scan_frames" in xf_density
+assert xf_density.index("jsr sio_probe_xf_dd") < xf_density.index("jsr sio_status")
+assert "sta probe_status3" in xf_density
+assert "lda probe_status3\n    sta sio_status_buf+2" in xf_density
+xf_sio_probe = sio_source.split(".proc sio_probe_xf_dd", 1)[1].split(
+    ".endproc", 1
+)[0]
+assert "lda #4\n    sta DAUX1" in xf_sio_probe
+assert "lda #0\n    sta DBYTLO\n    lda #1\n    sta DBYTHI" in xf_sio_probe
+assert "lda #1\n    ldx #1\n    jsr hsio_probe_once" in xf_sio_probe
+assert "hsio_probe_once  = $3A3F" in blob_source
+
+# Standardowy XF551 nie potrafi rozroznic logicznego formatu 180/360 KB.
+# Nie wolno uznawac odczytu pojedynczego sektora drugiej strony za dowod jej
+# przynaleznosci do biezacego formatu. Kopier oznacza ten przypadek wartoscia
+# 2, domyslnie wybiera 1S i pozwala swiadomie przelaczyc bit wyboru klawiszem G.
+assert ".proc probe_standard_xf_dd_sides" not in main_source
+assert "lda #$A0\n    sta sio_sector_lo" not in main_source
+xf_side_gate = main_source.split("possible_standard_xf:", 1)[1].split(
+    "standard_done:", 1
+)[0]
+assert "and #$20" in xf_side_gate
+assert "bmi" not in xf_side_gate
+assert "lda #2\n    sta geo_percom_ok,x" in xf_side_gate
+assert "jsr set_xf_sides" in xf_side_gate
+xf_side_choice = main_source.split(".proc set_xf_sides", 1)[1].split(
+    ".endproc", 1
+)[0]
+assert "lda #1" in xf_side_choice
+assert "lda format_enabled\n    asl a" in xf_side_choice
+assert "adc #0" in xf_side_choice
+assert "sta geo_sides,x" in xf_side_choice
+geometry_toggle = main_source.split("toggle_geometry:", 1)[1].split(
+    "show_memory:", 1
+)[0]
+assert "cmp #2" in geometry_toggle
+assert "eor #$80" in geometry_toggle
+assert "jsr set_xf_sides" in geometry_toggle
+assert "'G'|$80, \"EOMETRIA" in main_source
+next_source_block = main_source.split("next_source:", 1)[1].split(
+    "next_target:", 1
+)[0]
+rescan_block = main_source.split("rescan:", 1)[1].split(
+    "toggle_geometry:", 1
+)[0]
+for reset_block in (next_source_block, rescan_block):
+    assert "asl format_enabled\n    lsr format_enabled" in reset_block
+assert "jsr probe_drive" in next_source_block
+
+
+def xf_standard_sides(format_flags: int) -> int:
+    """Model 6502 ASL + LDA #1 + ADC #0 used by set_xf_sides."""
+    return 1 + ((format_flags >> 7) & 1)
+
+
+assert xf_standard_sides(0x00) == 1
+assert xf_standard_sides(0x01) == 1  # formatowanie nie zmienia geometrii
+assert xf_standard_sides(0x80) == 2
+assert xf_standard_sides(0x81) == 2
 assert ".proc hyperxf_track_valid" in main_source
 assert ".proc probe_hyperxf_track" in main_source
 assert "cmp #$C0\n    beq advance_entry" in main_source
 assert "hyperxf_ambiguous:" in main_source
-assert "lda #$80\n    sta geo_present,x" in main_source
+hyperxf_ambiguous = main_source.split("hyperxf_ambiguous:", 1)[1].split(
+    "hyperxf_shape_ready:", 1
+)[0]
+assert "lda #1\n    sta geo_present,x" in hyperxf_ambiguous
+assert "lda #2\n    sta geo_percom_ok,x" in hyperxf_ambiguous
+assert "jsr set_xf_sides" in hyperxf_ambiguous
+assert "jmp hyperxf_probe_done" in hyperxf_ambiguous
 for track in (0, 39, 40, 79, 80, 159):
     assert f"ldx #{track}" in main_source
 assert "lda #80\n    sta geo_tracks,x" in main_source
 assert "sta copy_reading+17" in main_source
 assert "sta copy_writing+17" in main_source
-assert "PROGRESS_SPEED_COL  = 35" in main_source
-assert "lda #PROGRESS_NUMBER_ROW\n    ldx #31" in main_source
+assert "PROGRESS_SPEED_COL  = 31" in main_source
+assert "ldx #27\n    jsr ui_set_cursor" in main_source
 assert "TRACK_BAR_OFFSET    = 3" in main_source
 assert "DISK_BAR_OFFSET     = 43" in main_source
 assert ".proc init_track_progress" in main_source
@@ -472,14 +638,19 @@ assert len(hsio_image) == 907
 assert hashlib.sha256(hsio_image).hexdigest() == (
     "7ba8de340671c1e886d8c04e6e0733cd2978a57a47a6229ecc38cdfcd11f1db3"
 )
+# DOHIDET=$3A3F, czyli przesuniecie $BA od poczatku obrazu $3985. Pierwsze
+# instrukcje musza zapisac A jako liczbe prob calego rozkazu i X jako liczbe
+# prob ramki; bez tej kontroli zmiana zewnetrznego bloba uniewaznilaby sonde.
+assert hsio_image[6 + 0xBA : 6 + 0xBE] == bytes((0x85, 0x39, 0x86, 0x38))
 
 print(
     f"OK: {len(CASES)} geometry/buffer cases, HyperXF track-table validation, "
     "sector-length source, "
-    "multi-pass chunking, full ATASCII screen conversion, centered sector "
-    "grids, four stage palettes, clean media prompts, buffered-write retry, "
+    "multi-pass chunking, scratch-backed SIO with in-pass visualization, centered "
+    "32-column sector windows, four stage palettes, clean media prompts, buffered-write retry, "
     "repeat copy from one-pass buffer, START/SELECT confirmation, instant K: "
-    "input, inverse-letter menu B, HyperXF identity/skew diagnostics, "
-    "block-fast buffer loops, own HSIO without SIOV, verified HSIO blob, "
+    "input, joined semigraphic menu C3, HyperXF identity/skew diagnostics, "
+    "row-mirrored buffer loops, own HSIO without SIOV, XF551 READ4 density "
+    "probe, verified HSIO blob, "
     "eight-drive limit, track/disk progress bars, and 38-column UI literals"
 )

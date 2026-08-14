@@ -17,6 +17,8 @@
 !/tools/**
 !/docs/
 !/docs/**
+!/diagnostics/
+!/diagnostics/**
 !/third_party/
 !/third_party/**
 

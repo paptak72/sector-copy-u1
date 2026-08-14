@@ -27,6 +27,7 @@
 .import sio_length_lo
 .import sio_length_hi
 .import sio_sector_buf
+.importzp progress_dst_ptr
 
 .export buffer_reset
 .export buffer_store
@@ -60,13 +61,14 @@ buffer_len_hi:    .res 1
     rts
 .endproc
 
-; Porownaj kolejny sektor strumienia bezposrednio z sio_sector_buf.
+; Porownaj kolejny sektor strumienia bezposrednio z aktualnym buforem DCB.
 ; Wejscie: dlugosc w sio_length_*, kursor ustawiony na poczatek sektora.
 ; Wyjscie: C=0 wszystkie bajty rowne, C=1 roznica lub koniec pamieci.
 ;
 ; Kursor przesuwa sie tak samo jak w buffer_load, ale porownanie bezposrednie
-; nie wymaga drugiego bufora 512 B. Jedyny obszar $3E00-$3FFF moze dzieki temu
-; sluzyc wszystkim operacjom sektorowym, a HSIO miesci sie ponizej okna $4000.
+; nie wymaga drugiego bufora 512 B. Kazdy sprawdzony bajt jest jednoczesnie
+; zapisywany w wycentrowanym oknie podgladu. Nie ma osobnego przebiegu ani
+; konwersji ATASCII, ktora odbieralaby czas potrzebny przeplotowi stacji.
 .proc buffer_compare
     lda #<sio_sector_buf
     sta buffer_data_ptr
@@ -83,17 +85,18 @@ buffer_len_hi:    .res 1
     bcs failed
 
 compare_block:
-    ; Wszystkie obslugiwane sektory i pozycje strumienia sa wyrownane do 128 B.
-    ; Kopiowanie pol strony petla Y=0..127 ogranicza przelaczanie bankow oraz
-    ; aktualizacje 16-bitowych licznikow do jednego razu na blok. Krotki czas
-    ; obslugi sektora pozwala zachowac okno wynikajace z przeplotu HyperXF.
+    ; 32 bajty odpowiadaja jednemu wierszowi okna. Wskaznik danych i banku
+    ; przesuwa sie o 32, a wskaznik ekranu o pelne 40 komorek do nastepnego
+    ; wiersza, dlatego surowe dane nigdy nie dotykaja pionowych krawedzi.
     ldy #0
 compare_byte:
-    lda (buffer_win_ptr),y
-    cmp (buffer_data_ptr),y
+    lda (buffer_data_ptr),y
+    sta (progress_dst_ptr),y
+    cmp (buffer_win_ptr),y
     bne mismatch
     iny
-    bpl compare_byte
+    cpy #32
+    bcc compare_byte
     jsr advance_block
     jsr decrement_block
     lda buffer_len_lo
@@ -147,8 +150,10 @@ copy_block:
 copy_byte:
     lda (buffer_data_ptr),y
     sta (buffer_win_ptr),y
+    sta (progress_dst_ptr),y
     iny
-    bpl copy_byte
+    cpy #32
+    bcc copy_byte
     jsr advance_block
     jsr decrement_block
     lda buffer_len_lo
@@ -196,8 +201,10 @@ copy_block:
 copy_byte:
     lda (buffer_win_ptr),y
     sta (buffer_data_ptr),y
+    sta (progress_dst_ptr),y
     iny
-    bpl copy_byte
+    cpy #32
+    bcc copy_byte
     jsr advance_block
     jsr decrement_block
     lda buffer_len_lo
@@ -253,33 +260,39 @@ unavailable:
 .endproc
 
 .proc advance_block
-    ; Przesun oba wskazniki o 128 bajtow. buffer_addr_* jest trwalym kursorem,
-    ; a buffer_win_ptr jego aktualnym adresem w wybranym oknie PORTB.
+    ; Przesun wskazniki danych i banku o szerokosc podgladu, a ekran o jeden
+    ; pelny wiersz. buffer_addr_* jest trwalym kursorem strumienia.
     lda buffer_data_ptr
     clc
-    adc #128
+    adc #32
     sta buffer_data_ptr
     bcc :+
     inc buffer_data_ptr+1
 :
     lda buffer_addr_lo
     clc
-    adc #128
+    adc #32
     sta buffer_addr_lo
     sta buffer_win_ptr
     lda buffer_addr_hi
     adc #0
     sta buffer_addr_hi
     sta buffer_win_ptr+1
+    lda progress_dst_ptr
+    clc
+    adc #40
+    sta progress_dst_ptr
+    bcc :+
+    inc progress_dst_ptr+1
+:
     rts
 .endproc
 
 .proc decrement_block
-    ; Dlugosci 128/256/512 sa wielokrotnosciami 128, wiec jedno 16-bitowe
-    ; odejmowanie aktualizuje licznik calego przetworzonego bloku.
+    ; Wszystkie wspierane dlugosci sektora sa wielokrotnosciami 32 bajtow.
     lda buffer_len_lo
     sec
-    sbc #128
+    sbc #32
     sta buffer_len_lo
     lda buffer_len_hi
     sbc #0

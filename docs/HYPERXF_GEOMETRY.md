@@ -1,18 +1,27 @@
 # HyperXF — wykrywanie gęstości i geometrii
 
-Ten dokument opisuje decyzje implementacyjne w Sector Copy U1 0.6.8. Źródłem
+Ten dokument opisuje decyzje implementacyjne w Sector Copy U1 0.6.9. Źródłem
 protokołu jest instrukcja **Hyper+ XF 1.0** Stefana Dorndorffa:
 
 - <https://ftp.pigwa.net/stuff/collections/nir_dary_cds/Hardware%20Info/HyperXF/Manual/Anleitung.txt>
 
 ## Dlaczego GET PERCOM nie wystarcza
 
-W zwykłym urządzeniu odpowiedź komendy GET PERCOM `$4E` bywa opisem aktualnego
-nośnika. HyperXF zwraca jednak blok ostatnio ustawiony komendą SET PERCOM
-`$4F`. Po zapisaniu 720 KB stacja może więc nadal zgłaszać wcześniejsze
-`40T/1S`, mimo że zwykłe komendy `R/P/W` udostępniają sektory aż do `$0B40`.
-Program rozpoznaje HyperXF po trzecim bajcie STATUS równym `$D9` i dla takiego
-urządzenia nie bierze liczby ścieżek ani stron z GET PERCOM.
+Także w standardowym XF551 odpowiedź GET PERCOM `$4E` może oznaczać ostatnio
+wykryty albo ostatnio wybrany komendą SET PERCOM format — zależnie od tego,
+które zdarzenie było późniejsze. W standardowym ROM-ie sam odczyt sektora 1
+nie wystarcza dla DD: program wykonuje wtedy opisaną w osobnym dokumencie
+sondę sektora 4 i przyjmuje dopiero drugi STATUS. PERCOM doprecyzowuje
+geometrię wyłącznie wtedy, gdy zgadza się z końcowym STATUS co do rozmiaru
+sektora oraz rozróżnienia 18/26 sektorów na ścieżkę. Liczba stron DD pozostaje
+w standardowym XF551 wyjątkiem wybieranym przez użytkownika, ponieważ firmware
+zawsze zakłada profil dwustronny.
+
+HyperXF zwraca blok ostatnio ustawiony komendą SET PERCOM `$4F`. Po zapisaniu
+720 KB stacja może więc nadal zgłaszać wcześniejsze `40T/1S`, mimo że zwykłe
+komendy `R/P/W` udostępniają sektory aż do `$0B40`. Program rozpoznaje HyperXF
+po trzecim bajcie STATUS równym `$D9` i dla takiego urządzenia nie bierze
+liczby ścieżek ani stron z GET PERCOM.
 
 ## Kolejność badania
 

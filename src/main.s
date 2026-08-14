@@ -48,6 +48,7 @@
 .import sio_clear_speeds
 .import sio_get_mode
 .import sio_read_boot_sector
+.import sio_probe_xf_dd
 .import sio_read_sector
 .import sio_result
 .import sio_status_buf
@@ -126,15 +127,15 @@
 .import copy_pass_number
 
 .export copy_ui_progress
+.export copy_ui_prepare_data
+.exportzp progress_dst_ptr
 
 ; Interfejs i tablice geometrii obsluguja D1:..D8:. Skanujemy caly ten zakres,
 ; a klawisze Z/C przechodza pozniej tylko po wpisach geo_present<>0.
 SCAN_DRIVES = 8
 
-PROGRESS_NUMBER_ROW = 3
-PROGRESS_NUMBER_COL = 18
-PROGRESS_SPEED_COL  = 35
-PROGRESS_DATA_COL   = 4
+PROGRESS_NUMBER_COL = 13
+PROGRESS_SPEED_COL  = 31
 PROGRESS_BAR_ROW    = 21
 PROGRESS_BAR_COL    = 1
 TRACK_BAR_OFFSET    = 3
@@ -151,6 +152,14 @@ SCREEN_BOX_BR       = $43
 ; Stockowy glif $7C ma pion $18 posrodku wszystkich osmiu skanlinii. Dziala
 ; poprawnie juz na ekranie wyboru trybu, zanim program przejmie komputer.
 SCREEN_BOX_V        = $7C
+; Polaczenia linii pochodza bezposrednio z semigrafiki standardowego zestawu
+; Atari. Odpowiadaja znakom ATASCII 1, 4, 19, 23 i 24: rozgalezieniom w prawo
+; i w lewo, skrzyzowaniu oraz polaczeniom pionu z gorna i dolna krawedzia.
+SCREEN_T_LEFT       = $41
+SCREEN_T_RIGHT      = $44
+SCREEN_CROSS        = $53
+SCREEN_T_TOP        = $57
+SCREEN_T_BOTTOM     = $58
 
 .segment "ZEROPAGE"
 progress_src_ptr: .res 2
@@ -166,6 +175,9 @@ source_drive:     .res 1
 target_drive:     .res 1
 scan_index:       .res 1
 verify_enabled:   .res 1
+; Bit 0 steruje formatowaniem. Bit 7 pamieta swiadomy wybor 360 KB dla
+; rodziny XF551/DD, gdy wykrywanie nie rozroznia jednej i dwoch stron.
+; Polaczenie obu flag oszczedza bajt w calkowicie wypelnionym segmencie BSS.
 format_enabled:   .res 1
 target_initialized: .res 1
 progress_render_rows:.res 1
@@ -186,8 +198,18 @@ progress_track_accum = probe_status3
 hyperxf_bit_mask:
     .byte $01, $02, $04, $08, $10, $20, $40, $80
 .segment "AUXCODE"
+; Kazdy wpis opisuje jeden poziomy separator menu: przesuniecie wzgledem
+; SAVMSC oraz znak w kolumnie 20. Trzy pierwsze wiersze lacza sie ze srodkowym
+; pionem paneli stacji; wartosc zero pozostawia zwykla linie pozioma.
+main_separator_rows:
+    .byte <(2*40),  >(2*40),  SCREEN_T_TOP
+    .byte <(4*40),  >(4*40),  SCREEN_CROSS
+    .byte <(10*40), >(10*40), SCREEN_T_BOTTOM
+    .byte <(12*40), >(12*40), 0
+    .byte <(14*40), >(14*40), 0
+    .byte <(20*40), >(20*40), 0
 title:
-    .byte "SECTOR COPY U1 0.6.8", ATASCII_EOL
+    .byte "SECTOR COPY U1 0.6.9", ATASCII_EOL
     .byte "             Paptak 2026", 0
 .segment "RODATA"
 launch_title:
@@ -242,23 +264,20 @@ turbo_prefix:
     .byte "TURBO", 0
 .segment "RODATA"
 copy_action:
-    .byte 'K'|$80, "OPIUJ DYSKIETKE", 0
+    .byte " ", 'K'|$80, "OPIUJ DYSKIETKE ", 0
 settings_title:
-    .byte "---USTAWIENIA---", 0
+    .byte " USTAWIENIA ", 0
 bottom_menu:
-    .byte 'S'|$80, "KAN   ", 'P'|$80, "AMIEC   ", 'Q'|$80, "UIT", 0
+    .byte 'S'|$80, "KAN   ", 'G'|$80, "EOMETRIA   "
+    .byte 'P'|$80, "AMIEC   ", 'Q'|$80, "UIT", 0
 scan_message:
-    .byte "SKAN D1-D8...", 0
+    .byte "SKAN D1-D8", 0
 memory_title:
     .byte "PAMIEC", ATASCII_EOL, 0
 mode_full:
-    .byte "TRYB: PELNY", ATASCII_EOL, 0
-mode_keep:
-    .byte "TRYB: DOS ZACHOWANY", ATASCII_EOL, 0
-main_mode_full:
     .byte "TRYB: PELNY  ", 0
-main_mode_keep:
-    .byte "TRYB: DOS  ", 0
+mode_keep:
+    .byte "TRYB: DOS ZACHOWANY  ", 0
 free_banks_label:
     .byte "BANKI EXT 16K: ", 0
 total_banks_label:
@@ -372,36 +391,17 @@ progress_sio_label:
     .byte "SIO ", 0
 progress_rows:
     .byte 4, 8, 16
-progress_offset_lo:
-    .byte <(10*40+PROGRESS_DATA_COL)
-    .byte <(8*40+PROGRESS_DATA_COL)
-    .byte <(4*40+PROGRESS_DATA_COL)
-progress_offset_hi:
-    .byte >(10*40+PROGRESS_DATA_COL)
-    .byte >(8*40+PROGRESS_DATA_COL)
-    .byte >(4*40+PROGRESS_DATA_COL)
+progress_top_rows:
+    .byte 8, 6, 3
+progress_box_lo:
+    .byte <(8*40+3), <(6*40+3), <(3*40+3)
+progress_box_hi:
+    .byte >(8*40+3), >(6*40+3), >(3*40+3)
+progress_data_lo:
+    .byte <(9*40+4), <(7*40+4), <(4*40+4)
+progress_data_hi:
+    .byte >(9*40+4), >(7*40+4), >(4*40+4)
 
-; Pelna tablica ATASCII -> kod ekranowy GR.0. Odczyt indeksowany obsluguje
-; jednakowo znaki kontrolne, semigrafike oraz negatyw i ma staly czas dla
-; kazdego bajtu. Ogranicza to koszt wizualizacji, aby obsluga ekranu miescila
-; sie w czasie miedzy sektorami wynikajacym z przeplotu HyperXF UltraSpeed.
-atascii_screen_table:
-    .byte $40,$41,$42,$43,$44,$45,$46,$47,$48,$49,$4A,$4B,$4C,$4D,$4E,$4F
-    .byte $50,$51,$52,$53,$54,$55,$56,$57,$58,$59,$5A,$5B,$5C,$5D,$5E,$5F
-    .byte $00,$01,$02,$03,$04,$05,$06,$07,$08,$09,$0A,$0B,$0C,$0D,$0E,$0F
-    .byte $10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$1A,$1B,$1C,$1D,$1E,$1F
-    .byte $20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$2A,$2B,$2C,$2D,$2E,$2F
-    .byte $30,$31,$32,$33,$34,$35,$36,$37,$38,$39,$3A,$3B,$3C,$3D,$3E,$3F
-    .byte $60,$61,$62,$63,$64,$65,$66,$67,$68,$69,$6A,$6B,$6C,$6D,$6E,$6F
-    .byte $70,$71,$72,$73,$74,$75,$76,$77,$78,$79,$7A,$7B,$7C,$7D,$7E,$7F
-    .byte $C0,$C1,$C2,$C3,$C4,$C5,$C6,$C7,$C8,$C9,$CA,$CB,$CC,$CD,$CE,$CF
-    .byte $D0,$D1,$D2,$D3,$D4,$D5,$D6,$D7,$D8,$D9,$DA,$DB,$DC,$DD,$DE,$DF
-    .byte $80,$81,$82,$83,$84,$85,$86,$87,$88,$89,$8A,$8B,$8C,$8D,$8E,$8F
-    .byte $90,$91,$92,$93,$94,$95,$96,$97,$98,$99,$9A,$9B,$9C,$9D,$9E,$9F
-    .byte $A0,$A1,$A2,$A3,$A4,$A5,$A6,$A7,$A8,$A9,$AA,$AB,$AC,$AD,$AE,$AF
-    .byte $B0,$B1,$B2,$B3,$B4,$B5,$B6,$B7,$B8,$B9,$BA,$BB,$BC,$BD,$BE,$BF
-    .byte $E0,$E1,$E2,$E3,$E4,$E5,$E6,$E7,$E8,$E9,$EA,$EB,$EC,$ED,$EE,$EF
-    .byte $F0,$F1,$F2,$F3,$F4,$F5,$F6,$F7,$F8,$F9,$FA,$FB,$FC,$FD,$FE,$FF
 copy_success:
     .byte ATASCII_EOL, "KOPIA I WERYFIKACJA OK.", ATASCII_EOL, 0
 copy_success_no_verify:
@@ -490,6 +490,8 @@ main_loop:
     beq next_target
     cmp #'S'
     beq rescan
+    cmp #'G'
+    beq toggle_geometry
     cmp #'P'
     beq show_memory
     cmp #'K'
@@ -508,6 +510,11 @@ next_source:
     lda source_drive
     jsr next_detected_drive
     sta source_drive
+    ; Nowe zrodlo zaczyna od bezpiecznego i najczestszego wariantu 180 KB.
+    asl format_enabled
+    lsr format_enabled
+    lda source_drive
+    jsr probe_drive
     jmp main_loop
 
 next_target:
@@ -517,7 +524,23 @@ next_target:
     jmp main_loop
 
 rescan:
+    asl format_enabled
+    lsr format_enabled
     jsr scan_all
+    jmp main_loop
+
+toggle_geometry:
+    ; Zmiana liczby stron ma znaczenie wylacznie dla niejednoznacznego DD
+    ; rodziny XF551/HyperXF, oznaczonego przez geo_percom_ok=2.
+    ldx source_drive
+    dex
+    lda geo_percom_ok,x
+    cmp #2
+    bne main_loop
+    lda format_enabled
+    eor #$80
+    sta format_enabled
+    jsr set_xf_sides
     jmp main_loop
 
 show_memory:
@@ -779,16 +802,77 @@ received:
     jmp hyperxf_track_valid
 .endproc
 
+; Odczekaj A kolejnych zmian najmlodszego licznika zegara systemowego.
+; Porownanie biezacej wartosci zamiast obliczania czasu jest odporne na
+; zawiniecie $FF->$00 i nie wymaga dodatkowego bajtu ciasnego segmentu BSS.
+.proc wait_scan_frames
+    tax
+next_frame:
+    lda RTCLOK+2
+wait_change:
+    cmp RTCLOK+2
+    beq wait_change
+    dex
+    bne next_frame
+    rts
+.endproc
+
+; Usun niejednoznaczny stan ED pozostawiany przez standardowy ROM XF551 po
+; odczycie sektora startowego. Sektory 1..3 sa w tym firmware jawnie wylaczone
+; z kontroli dlugosci, dlatego fizyczny DD daje po READ 1 pozorny STATUS=$80.
+; Dopiero READ 4/256 pozwala kontrolerowi odroznic 18x256 od 26x128.
+;
+; Procedura uruchamia probe dla kazdego urzadzenia rozpoznanego jako rodzina
+; XF przez timeout $FE albo protokol szybkiego SIO $40. Nie opiera tej decyzji
+; na pierwszych bitach gestosci: po nieudanym READ 1 moglyby one nadal opisywac
+; poprzedni nosnik. Inne stacje nie dostaja obcego, opozniajacego rozkazu.
+; Po dziewieciu ramkach pobierany jest drugi STATUS. Gdyby ten pojedynczy
+; STATUS zawiodl, odtwarzamy bajt gestosci i bajt identyfikacji z pierwszej
+; poprawnej odpowiedzi; czesciowa ramka nie moze zmienic dalszej sciezki.
+.proc probe_standard_xf_density
+    lda sio_status_buf+2
+    cmp #$FE
+    beq identified
+    lda scan_index
+    jsr sio_get_mode
+    cmp #$40
+    bne done
+
+identified:
+    lda sio_status_buf
+    sta probe_status0
+    lda sio_status_buf+2
+    sta probe_status3
+
+    lda scan_index
+    jsr sio_probe_xf_dd
+
+    ; QMEG pozostawia napedowi dziewiec ramek na ustabilizowanie stanu przed
+    ; ponownym STATUS.
+    lda #9
+    jsr wait_scan_frames
+
+    lda scan_index
+    jsr sio_status
+    bcc done
+    lda probe_status0
+    sta sio_status_buf
+    lda probe_status3
+    sta sio_status_buf+2
+done:
+    rts
+.endproc
+
 ; Wejscie: A = numer stacji. Bada urzadzenie i aktualizuje jego geometrie.
 ; Wyjscie: C=0 sukces, C=1 brak odpowiedzi na STATUS.
 .proc probe_drive
     sta scan_index
 
-    ; Klasyczna sekwencja Atari: najpierw READ sektora 1. Ten dostep powoduje,
-    ; ze elektronika stacji rozpoznaje kodowanie aktualnego nosnika; dopiero
-    ; nastepny STATUS zwraca wiarygodne bity SD/MD/DD. Blad odczytu nie oznacza
-    ; jeszcze braku stacji (dysk moze byc pusty albo uszkodzony), dlatego o
-    ; obecnosci urzadzenia nadal rozstrzyga odpowiedz STATUS.
+    ; Klasyczna sekwencja zaczyna sie od READ sektora 1 i STATUS. Dla wiekszosci
+    ; stacji wystarcza to do rozpoznania nosnika. Standardowy XF551 jest
+    ; wyjatkiem obslugiwanym ponizej osobna prowokacja sektorem 4.
+    ; Blad odczytu nie oznacza jeszcze braku stacji (dysk moze byc pusty albo
+    ; uszkodzony), dlatego o obecnosci urzadzenia rozstrzyga odpowiedz STATUS.
     jsr sio_read_boot_sector
     lda scan_index
     jsr sio_status
@@ -796,14 +880,16 @@ received:
     jmp failed
 status_ok:
 
-    ; Standardowy GET PERCOM zwykle opisuje aktualny nosnik. W HyperXF komenda
-    ; N/$4E zwraca jednak ostatni blok ustawiony komenda O, a nie fizyczny
-    ; rozmiar wlozonej dyskietki. Sygnatura $D9 kieruje wiec program do
-    ; aktywnego badania gestosci i skrajnych sciezek zamiast uzycia PERCOM.
+    ; Pierwszy STATUS rozstrzyga sciezke badania. Sygnatura $D9 kieruje HyperXF
+    ; do aktywnego badania skrajnych sciezek. Zwykla stacja przechodzi przez
+    ; probe XF551, ktora w razie potrzeby zastapi odpowiedz drugim STATUS.
+    ; Dopiero ten koncowy wynik staje sie nadrzedny wobec GET PERCOM.
     lda sio_status_buf+2
     cmp #$D9
-    bne probe_standard
-    jmp probe_hyperxf
+    beq probe_hyperxf
+    jsr probe_standard_xf_density
+    ; Drugi STATUS wykonany przez probe jest od tej chwili nadrzednym opisem
+    ; klasy nosnika. GET PERCOM moze go jedynie doprecyzowac.
 
 probe_standard:
     ldx scan_index
@@ -824,6 +910,29 @@ no_speed:
     dex
     jsr geo_set_percom
 no_percom:
+    ; Standardowy XF551 zawsze zglasza DD jako dwustronne, poniewaz firmware
+    ; nie potrafi wykryc liczby stron. Odczyt sektora z drugiej strony rowniez
+    ; nie rozstrzyga: na dawniej uzywanej dyskietce moga pozostac poprawne,
+    ; stare naglowki. Dlatego taki profil dostaje znacznik 2 i bezpieczne,
+    ; domyslne 40T/1S. Klawisz G pozwala uzytkownikowi wybrac 40T/2S.
+    ldx scan_index
+    dex
+    lda geo_speed_kind,x
+    cmp #2
+    beq possible_standard_xf
+    lda sio_status_buf+2
+    cmp #$FE
+    bne standard_done
+possible_standard_xf:
+    lda sio_status_buf
+    and #$20
+    beq standard_done
+    lda #2
+    sta geo_percom_ok,x
+    lda #40
+    sta geo_tracks,x
+    jsr set_xf_sides
+standard_done:
     clc
     rts
 
@@ -926,16 +1035,19 @@ hyperxf_name:
     bne hyperxf_shape_ready
 
 hyperxf_ambiguous:
-    ; Widoczny tylko fragment oczekiwanej geometrii oznacza nosnik
-    ; niejednoznaczny/uszkodzony. Ujemne geo_present nadal pozostawia stacje
-    ; na liscie, ale copy.s odrzuci ja jako zrodlo zamiast po cichu skopiowac
-    ; tylko pierwsze 40 sciezek. Pusta dyskietka nadal moze byc celem FORMAT.
+    ; Widoczny tylko fragment dalszej strony nie dowodzi wiekszego formatu.
+    ; Na dyskietce 180 KB moga pozostac kompletne stare naglowki pojedynczych
+    ; sciezek strony drugiej. Przyjmujemy wiec najczestsze 40T/1S, ale znacznik
+    ; 2 udostepnia klawisz G dla swiadomego wyboru 40T/2S. Ten sam wybor jest
+    ; ponownie nakladany przy kazdym badaniu poprzedzajacym kopiowanie.
     ldx scan_index
     dex
-    lda #$80
-    sta geo_present,x
     lda #1
-    sta geo_sides,x
+    sta geo_present,x
+    lda #2
+    sta geo_percom_ok,x
+    jsr set_xf_sides
+    jmp hyperxf_probe_done
 hyperxf_shape_ready:
     ldx scan_index
     dex
@@ -996,61 +1108,69 @@ failed:
     rts
 .endproc
 
+; Ustaw liczbe stron niejednoznacznego DD rodziny XF551/HyperXF.
+; X wskazuje wpis geometrii; bit 7 flag wybiera 2S, a stan domyslny 1S.
+.proc set_xf_sides
+    lda format_enabled
+    asl a
+    lda #1
+    adc #0
+    sta geo_sides,x
+    jmp geo_calculate_total
+.endproc
+
 .proc draw_main
     jsr ui_begin_screen
-    lda #1
+    jsr draw_main_structure
+
+    lda #0
     ldx #9
     jsr ui_set_cursor
     lda #<title
     ldy #>title
     jsr ui_print_z
 
-    ldx #1
-    jsr draw_panel_box
-    ldx #21
-    jsr draw_panel_box
-
-    lda #4
+    lda #3
     ldx #7
     jsr ui_set_cursor
     lda #<source_panel_title
     ldy #>source_panel_title
     jsr ui_print_z
-    lda #4
-    ldx #28
+    lda #3
+    ldx #29
     jsr ui_set_cursor
     lda #<target_panel_title
     ldy #>target_panel_title
     jsr ui_print_z
 
     lda source_drive
-    ldx #3
+    ldx #2
     jsr draw_selected_panel
     lda target_drive
-    ldx #23
+    ldx #22
     jsr draw_selected_panel
 
     lda #12
-    ldx #12
+    ldx #11
     jsr ui_set_cursor
     lda #<copy_action
     ldy #>copy_action
     jsr ui_print_z
 
     lda #14
-    ldx #12
+    ldx #13
     jsr ui_set_cursor
     lda #<settings_title
     ldy #>settings_title
     jsr ui_print_z
 
     lda #16
-    ldx #4
+    ldx #2
     jsr ui_set_cursor
     jsr print_format_state
 
-    lda #17
-    ldx #4
+    lda #16
+    ldx #23
     jsr ui_set_cursor
     lda #<verify_label
     ldy #>verify_label
@@ -1067,17 +1187,19 @@ verify_off:
     jsr ui_print_z
 show_mode:
     lda #18
-    ldx #4
+    ldx #9
     jsr ui_set_cursor
     lda mem_keep_dos
     beq main_full_mode
-    lda #<main_mode_keep
-    ldy #>main_mode_keep
-    jsr ui_print_z
-    jmp main_mode_done
+    lda #<mode_keep
+    ldy #>mode_keep
+    ; Wszystkie stale tekstowe leza powyzej strony zerowej, wiec LDY ustawia
+    ; Z=0. BNE jest tu dwubajtowym skokiem bezwarunkowym wspolnym dla 6502.
+    bne main_print_mode
 main_full_mode:
-    lda #<main_mode_full
-    ldy #>main_mode_full
+    lda #<mode_full
+    ldy #>mode_full
+main_print_mode:
     jsr ui_print_z
 main_mode_done:
     lda #<buffer_short_label
@@ -1087,7 +1209,7 @@ main_mode_done:
     jsr ui_print_u8
 
     lda #21
-    ldx #10
+    ldx #4
     jsr ui_set_cursor
     lda #<bottom_menu
     ldy #>bottom_menu
@@ -1095,79 +1217,87 @@ main_mode_done:
     rts
 .endproc
 
-; Rysuje wewnetrzny panel 18x8 od wiersza 3. Wejscie: X = lewa kolumna.
-.proc draw_panel_box
-    stx scan_index
-    lda SAVMSC
+; Buduje zintegrowany pulpit glownego menu bez udawanych znakow ASCII.
+; Zewnetrzna ramka zajmuje pelne 40x24 znaki. Poziome separatory koncza sie
+; rozgalezieniami polaczonymi z pionowymi krawedziami, a trzy wiersze paneli
+; stacji wykorzystuja odpowiednio gorne T, skrzyzowanie i dolne T. Dzieki temu
+; kazda kreska ma ciaglosc wynikajaca z geometrii glifow ATASCII.
+.proc draw_main_structure
+    ; Wspolna procedura ramki otrzymuje prawa kolumne i liczbe wierszy
+    ; wewnetrznych. Dla menu sa to kolumna 39 i wiersze 1..22.
+    lda #39
+    sta scan_index
+    lda #0
+    tay
+    ldx #22
+    jsr draw_wide_box
+
+    ; Tablica eliminuje szesc niemal identycznych blokow obliczania adresu.
+    ; X przechodzi po trojkach: low, high, znak srodkowego polaczenia.
+    ldx #0
+separator_loop:
+    lda main_separator_rows,x
     clc
-    adc #<(3*40)
+    adc SAVMSC
     sta progress_dst_ptr
-    lda SAVMSC+1
-    adc #>(3*40)
+    inx
+    lda main_separator_rows,x
+    adc SAVMSC+1
     sta progress_dst_ptr+1
-    txa
-    clc
-    adc progress_dst_ptr
-    sta progress_dst_ptr
-    bcc :+
-    inc progress_dst_ptr+1
-:
+    inx
+
     ldy #0
-    lda #SCREEN_BOX_TL
+    lda #SCREEN_T_LEFT
     sta (progress_dst_ptr),y
     iny
     lda #SCREEN_HLINE
-top:
+separator_line:
     sta (progress_dst_ptr),y
     iny
-    cpy #17
-    bcc top
-    lda #SCREEN_BOX_TR
+    cpy #39
+    bcc separator_line
+    lda #SCREEN_T_RIGHT
     sta (progress_dst_ptr),y
 
-    ldx #6
-sides:
-    lda progress_dst_ptr
+    lda main_separator_rows,x
+    beq separator_plain
+    ldy #20
+    sta (progress_dst_ptr),y
+separator_plain:
+    inx
+    cpx #18
+    bcc separator_loop
+
+    ; Brakujace odcinki pionu leza w wierszu tytulow oraz pieciu wierszach
+    ; danych. Wiersze 2, 4 i 10 zostaly juz narysowane przez tablice powyzej.
+    lda SAVMSC
     clc
-    adc #40
+    adc #<(3*40+20)
     sta progress_dst_ptr
-    bcc :+
-    inc progress_dst_ptr+1
-:
+    lda SAVMSC+1
+    adc #>(3*40+20)
+    sta progress_dst_ptr+1
     ldy #0
     lda #SCREEN_BOX_V
     sta (progress_dst_ptr),y
-    ldy #17
-    sta (progress_dst_ptr),y
-    dex
-    bne sides
 
-    lda progress_dst_ptr
-    clc
-    adc #40
-    sta progress_dst_ptr
-    bcc :+
-    inc progress_dst_ptr+1
-:
-    ldy #0
-    lda #SCREEN_BOX_BL
+    jsr screen_next_row
+    jsr screen_next_row
+    ldx #5
+vertical_loop:
+    lda #SCREEN_BOX_V
     sta (progress_dst_ptr),y
-    iny
-    lda #SCREEN_HLINE
-bottom:
-    sta (progress_dst_ptr),y
-    iny
-    cpy #17
-    bcc bottom
-    lda #SCREEN_BOX_BR
-    sta (progress_dst_ptr),y
+    jsr screen_next_row
+    dex
+    bne vertical_loop
     rts
 .endproc
 
 ; A = numer stacji, X = pierwsza kolumna tresci panelu ZRODLO/CEL.
 ;
 ; Szesc wierszy wewnatrz ramki ma stale, latwe do porownania znaczenie:
-;   4: tytul (rysowany przez draw_main),
+;   3: tytul (rysowany przez draw_main),
+;   4: semigraficzny separator tytulu,
 ;   5: numer stacji i pojemnosc nominalna w KB,
 ;   6: pelna nazwa gestosci,
 ;   7: liczba sciezek oraz stron,
@@ -1203,10 +1333,7 @@ bottom:
 
 present:
     ; Dwie spacje oddzielaja numer Dn od nominalnej pojemnosci.
-    lda #' '
-    jsr ui_print_char
-    lda #' '
-    jsr ui_print_char
+    jsr print_two_spaces
 
     ldx scan_index
     jsr print_drive_capacity
@@ -1277,10 +1404,7 @@ print_density:
     lda geo_bps_lo,x
     ldy geo_bps_hi,x
     jsr ui_print_u16
-    lda #' '
-    jsr ui_print_char
-    lda #' '
-    jsr ui_print_char
+    jsr print_two_spaces
     ldx scan_index
     lda geo_total_lo,x
     ldy geo_total_hi,x
@@ -1411,14 +1535,16 @@ show_mode:
     beq memory_full_mode
     lda #<mode_keep
     ldy #>mode_keep
-    jsr ui_print_z
-    jmp show_values
+    ; Jak wyzej: starszy bajt adresu RODATA jest zawsze niezerowy.
+    bne memory_print_mode
 memory_full_mode:
     lda #<mode_full
     ldy #>mode_full
+memory_print_mode:
     jsr ui_print_z
 
 show_values:
+    jsr ui_print_eol
     lda #<main_free_label
     ldy #>main_free_label
     jsr ui_print_z
@@ -1571,7 +1697,8 @@ first_target:
     jmp cancelled
 :
     lda format_enabled
-    beq check_preformatted
+    lsr a
+    bcc check_preformatted
     jmp format_target
 
 check_preformatted:
@@ -1727,7 +1854,8 @@ success_wait:
     lda #0
     sta target_initialized
     lda format_enabled
-    bne repeat_with_format
+    lsr a
+    bcs repeat_with_format
     jmp check_preformatted
 repeat_with_format:
     jmp format_target
@@ -1834,7 +1962,8 @@ loop:
     ldy #>format_label
     jsr ui_print_z
     lda format_enabled
-    beq no_format
+    lsr a
+    bcc no_format
     lda #<format_same_label
     ldy #>format_same_label
     jmp ui_print_z
@@ -1872,10 +2001,11 @@ no_format:
     jmp print_separator
 .endproc
 
-; Rysuje szeroka ramke o stalej szerokosci 36 znakow. A/Y zawiera przesuniecie
-; lewego gornego rogu wzgledem SAVMSC, a X liczbe pustych wierszy wewnatrz.
-; Procedura sluzy ekranowi PARAMETRY KOPII i nie korzysta z CIO, dzieki czemu
-; naroza oraz pionowe krawedzie trafiaja zawsze do dokladnych kolumn ekranu.
+; Rysuje ramke od kolumny 0 do kolumny zapisanej w scan_index. A/Y zawiera
+; przesuniecie lewego gornego rogu wzgledem SAVMSC, a X liczbe pustych wierszy
+; wewnatrz. PARAMETRY KOPII podaja kolumne 35, a menu glowne pelna kolumne 39.
+; Zapis bezposrednio do ekranu omija stan edytora E: i gwarantuje dokladne
+; polozenie naroznikow oraz pionowych krawedzi.
 .proc draw_wide_box
     stx progress_render_rows
     clc
@@ -1893,22 +2023,22 @@ no_format:
 top:
     sta (progress_dst_ptr),y
     iny
-    cpy #35
+    cpy scan_index
     bcc top
     lda #SCREEN_BOX_TR
     sta (progress_dst_ptr),y
 
 sides:
-    jsr wide_box_next_row
+    jsr screen_next_row
     ldy #0
     lda #SCREEN_BOX_V
     sta (progress_dst_ptr),y
-    ldy #35
+    ldy scan_index
     sta (progress_dst_ptr),y
     dec progress_render_rows
     bne sides
 
-    jsr wide_box_next_row
+    jsr screen_next_row
     ldy #0
     lda #SCREEN_BOX_BL
     sta (progress_dst_ptr),y
@@ -1917,13 +2047,17 @@ sides:
 bottom:
     sta (progress_dst_ptr),y
     iny
-    cpy #35
+    cpy scan_index
     bcc bottom
     lda #SCREEN_BOX_BR
     sta (progress_dst_ptr),y
     rts
+.endproc
 
-wide_box_next_row:
+; Przesuwa wspolny wskaznik ekranu o jeden wiersz trybu 40-kolumnowego.
+; Korzystaja z niego zarowno ramki, jak i srodkowy pion menu, co usuwa trzy
+; kopie tej samej arytmetyki 16-bitowej z ciasnego obszaru programu.
+.proc screen_next_row
     lda progress_dst_ptr
     clc
     adc #40
@@ -1940,6 +2074,8 @@ wide_box_next_row:
     ; Wariant C: dwa szerokie bloki rozdzielaja wybor nosnikow od informacji
     ; o geometrii i pamieci. Wszystkie wartosci pochodza z tego samego rekordu
     ; geometrii, ktory zostanie przekazany procedurom kopiowania.
+    lda #35
+    sta scan_index
     lda #<(3*40+2)
     ldy #>(3*40+2)
     ldx #2
@@ -2154,16 +2290,59 @@ confirm_verify_done:
     jmp ui_print_z
 .endproc
 
-.proc copy_ui_progress
-    ; Licznik sektora jest zapisywany bezposrednio do RAM ekranu. Cztery
-    ; wywolania CIO na kazdy sektor byly niewidocznie drogie i wraz z kopiowaniem
-    ; bufora zjadaly margines czasowy przeplotu HyperXF UltraSpeed.
+.proc progress_geometry_index
+    ; Okno zachowuje rozmiar wynikajacy z normalnego sektora geometrii, a nie
+    ; z chwilowej dlugosci sektorow startowych 1..3. Dzieki temu DD i formaty
+    ; 512 B nie zmieniaja wysokosci ramki po trzecim sektorze.
+    ldx source_drive
+    dex
+    lda geo_bps_hi,x
+    tax
+    rts
+.endproc
+
+; Ustaw wskaznik na pierwsza z 32 wewnetrznych kolumn okna danych. buffer.s
+; przesuwa go potem o 40 bajtow po kazdej grupie 32 bajtow sektora.
+.proc copy_ui_prepare_data
+    jsr progress_geometry_index
     lda SAVMSC
     clc
-    adc #<(PROGRESS_NUMBER_ROW*40+PROGRESS_NUMBER_COL)
+    adc progress_data_lo,x
     sta progress_dst_ptr
     lda SAVMSC+1
-    adc #>(PROGRESS_NUMBER_ROW*40+PROGRESS_NUMBER_COL)
+    adc progress_data_hi,x
+    sta progress_dst_ptr+1
+    rts
+.endproc
+
+; Narysuj stala ramke szeroka na 32 bajty danych. Jej polozenie jest pionowo
+; wycentrowane dla sektorow 128/256 B; wariant 512 B wykorzystuje cale wolne
+; pole pomiedzy naglowkiem etapu i paskami postepu.
+.proc draw_sector_window
+    jsr progress_geometry_index
+    lda progress_box_lo,x
+    sta progress_src_ptr
+    lda progress_box_hi,x
+    tay
+    lda progress_rows,x
+    tax
+    lda #33
+    sta scan_index
+    lda progress_src_ptr
+    jmp draw_wide_box
+.endproc
+
+.proc copy_ui_progress
+    ; Licznik sektora jest zapisywany bezposrednio do RAM ekranu. Cztery
+    ; wywolania CIO na kazdy sektor byly niewidocznie drogie i wraz z obsluga
+    ; bufora zjadaly margines czasowy przeplotu prawdziwych stacji.
+    jsr copy_ui_prepare_data
+    lda progress_dst_ptr
+    sec
+    sbc #31
+    sta progress_dst_ptr
+    lda progress_dst_ptr+1
+    sbc #0
     sta progress_dst_ptr+1
     ldy #0
     lda copy_current_hi
@@ -2205,8 +2384,6 @@ show_standard:
     lda #0
     sta (progress_dst_ptr),y
 speed_done:
-
-    jsr render_sector_atascii
     jsr set_progress_bar_ptr
 
     ; Gorny pasek przedstawia sektory aktualnej logicznej sciezki. Pozycja
@@ -2236,7 +2413,7 @@ update_whole_disk:
 ; Dolny pasek narasta przez cala dyskietke. Dzielnik jest wyliczany raz na
 ; ekran jako ceil(total/32); w goracej petli wykonujemy tylko inkrementacje i
 ; jedno porownanie, aby wizualizacja nie psula przeplotu szybkiej HyperXF.
-; Procedura lezy w UICODE ponizej wspolnego bufora sektorowego $3E00.
+; Procedura lezy w UICODE ponizej pomocniczego obszaru scratch $3E00.
 .segment "UICODE"
 .proc update_disk_progress
     lda progress_disk_cell
@@ -2263,8 +2440,10 @@ done:
 .segment "CODE"
 
 .proc copy_progress_init
-    lda #PROGRESS_NUMBER_ROW
-    ldx #10
+    jsr draw_sector_window
+    jsr progress_geometry_index
+    lda progress_top_rows,x
+    ldx #5
     jsr ui_set_cursor
     lda #<progress_sector_label
     ldy #>progress_sector_label
@@ -2281,8 +2460,9 @@ done:
     lda copy_total_lo
     jsr print_hex
 
-    lda #PROGRESS_NUMBER_ROW
-    ldx #31
+    jsr progress_geometry_index
+    lda progress_top_rows,x
+    ldx #27
     jsr ui_set_cursor
     lda #<progress_sio_label
     ldy #>progress_sio_label
@@ -2432,60 +2612,6 @@ save_remainder:
     rts
 .endproc
 .segment "CODE"
-
-.proc render_sector_atascii
-    lda #<sio_sector_buf
-    sta progress_src_ptr
-    lda #>sio_sector_buf
-    sta progress_src_ptr+1
-
-    ldx #0
-    lda sio_length_hi
-    beq geometry_ready
-    inx
-    cmp #1
-    beq geometry_ready
-    inx
-geometry_ready:
-    lda progress_rows,x
-    sta progress_render_rows
-    lda SAVMSC
-    clc
-    adc progress_offset_lo,x
-    sta progress_dst_ptr
-    lda SAVMSC+1
-    adc progress_offset_hi,x
-    sta progress_dst_ptr+1
-
-row_loop:
-    ldy #0
-byte_loop:
-    lda (progress_src_ptr),y
-    tax
-    lda atascii_screen_table,x
-    sta (progress_dst_ptr),y
-    iny
-    cpy #32
-    bcc byte_loop
-
-    lda progress_src_ptr
-    clc
-    adc #32
-    sta progress_src_ptr
-    bcc :+
-    inc progress_src_ptr+1
-:
-    lda progress_dst_ptr
-    clc
-    adc #40
-    sta progress_dst_ptr
-    bcc :+
-    inc progress_dst_ptr+1
-:
-    dec progress_render_rows
-    bne row_loop
-    rts
-.endproc
 
 ; A = bajt, Y = pozycja w wierszu. Zapisuje dwie cyfry szesnastkowe jako kody
 ; ekranowe i zwieksza Y o dwa. Procedura nie korzysta z CIO ani kursora E:.

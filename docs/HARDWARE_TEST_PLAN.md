@@ -1,4 +1,4 @@
-# Plan prób sprzętowych — wersja 0.6.8
+# Plan prób sprzętowych — wersja 0.6.9
 
 Wszystkie próby zapisu wykonujemy wyłącznie na opisanych dyskietkach roboczych.
 Najpierw powstaje znany obraz testowy z sumami kontrolnymi, potem kopia jest
@@ -36,7 +36,7 @@ błędów, a nie listą samych testów emulatorowych.
 9. Ten sam szybki napęd przy zwykłym Atari OS, QMEG i BIOS-ie Ultimate 1MB:
    profil oraz czas kopii powinny pozostać takie same, bo program używa własnego
    sterownika POKEY.
-10. Interfejs: klawisze `Z/C/K/F/W/S/T/P/Q`, potwierdzenia `START`/`SELECT`,
+10. Interfejs: klawisze `Z/C/K/F/W/S/G/P/Q`, potwierdzenia `START`/`SELECT`,
     czyste ekrany komunikatów i wszystkie cztery palety etapów.
 11. Po kopii jednoprzebiegowej co najmniej dwie kolejne dyskietki zapisane z
     tego samego bufora; po kopii wieloprzebiegowej brak tej opcji.
@@ -68,7 +68,7 @@ zapamiętanej nazwie profilu.
   jako obecne; przy jednej stacji oba panele pokazują ten sam numer;
 - liczba sektorów i bajtów odpowiada obrazowi wzorcowemu;
 - format i zapis kończą się statusem SIO `$01`;
-- klawisze `Z/C/K/F/W/S/T/P/Q` działają bez `RETURN`, a ich pierwsze litery są
+- klawisze `Z/C/K/F/W/S/G/P/Q` działają bez `RETURN`, a ich pierwsze litery są
   pokazane w inverse;
 - na każdym ekranie potwierdzenia `START` kontynuuje, a `SELECT` anuluje lub
   wraca; przytrzymany klawisz nie zatwierdza automatycznie następnego ekranu;
@@ -80,8 +80,8 @@ zapamiętanej nazwie profilu.
 - weryfikacja programu nie zgłasza różnicy;
 - ATR odczytany po próbie ma identyczne dane sektorów jak wzorzec;
 - podczas każdego transferu numer sektora `$hhhh` odpowiada faktycznej operacji,
-  a wyśrodkowana siatka ATASCII, łącznie z semigrafiką i inwersją, zmienia się
-  zgodnie z danymi bieżącego sektora;
+  a surowa siatka kodów ekranowych Atari, łącznie z semigrafiką i inwersją,
+  zmienia się zgodnie z danymi bieżącego sektora;
 - ekran odczytu jest zielony, formatowania i zapisu czerwony, weryfikacji żółty,
   a menu, pytania, sukces i błędy wracają do granatu;
 - podczas odczytu, zapisu i weryfikacji wskaźnik `FAST`/`STD` odpowiada trybowi
@@ -91,7 +91,9 @@ zapamiętanej nazwie profilu.
 - pierwszy pasek ma inverse `S`, wykorzystuje wszystkie 32 pola i zeruje się
   po 18 sektorach SD/DD albo 26 sektorach MD; drugi ma inverse `D` i rośnie
   przez całą dyskietkę; żaden z nich nie nadpisuje wiersza dolnej ramki;
-- sektory 128/256/512 bajtów zajmują odpowiednio 4/8/16 wierszy podglądu;
+- sektory 128/256/512 bajtów zajmują odpowiednio 4/8/16 wierszy w osobnym,
+  wyśrodkowanym oknie szerokości 32 znaków; dane nie dotykają jego pionów ani
+  zewnętrznej ramki ekranu;
 - kopia większa od bufora przechodzi przez wszystkie zakresy bez pominięcia
   ani powtórzenia sektora;
 - po udanej kopii jednoprzebiegowej `START` zapisuje następną dyskietkę z
@@ -151,15 +153,15 @@ użyty jako źródło, ponieważ groziłoby to cichym pominięciem danych.
 
 ## Próba rozpoznania HyperXF krok po kroku
 
-1. Uruchomić 0.6.8 i poczekać na skan.
+1. Uruchomić 0.6.9 i poczekać na skan.
 2. W panelu stacji Zaxona odczytać wiersz `SIO`. Dla ROM-u Stefana Dorndorfa
    oczekujemy `HXF9` albo `HXF` z innym dzielnikiem zwróconym przez `$3F`;
    `HXF40` oznacza, że stacja została rozpoznana, ale profil jest standardowy.
-3. Wykonać najpierw `T`, potem kopię krótkiej dyskietki roboczej bez ważnych
-   danych. Zanotować czas odczytu i zapisu osobno oraz obserwować żywy wskaźnik
-   `FAST`/`STD` przy kolejnych sektorach.
+3. Wykonać kopię krótkiej dyskietki roboczej bez ważnych danych. Zanotować czas
+   odczytu i zapisu osobno oraz obserwować żywy wskaźnik `FAST`/`STD` przy
+   kolejnych sektorach.
 4. Powtórzyć po zimnym starcie ze zwykłym Atari OS oraz QMEG. Wynik powinien
-   być taki sam, ponieważ wersja 0.6.8 nie korzysta z SIOV ROM-u.
+   być taki sam, ponieważ wersja 0.6.9 nie korzysta z SIOV ROM-u.
 5. Sformatować cel w programie. Przy aktywnym szybkim profilu ekran powinien
    pokazać `HYPERXF SKEW: ULTRASPEED`; następnie zapis i żółta weryfikacja mają
    utrzymywać odpowiednio `FAST` albo jawnie pokazać chwilowy `STD` po fallbacku.
@@ -187,6 +189,30 @@ do 720 sektorów przez zwrotny blok GET PERCOM.
 6. Zgrać wynikowy ATR na Maca i porównać wszystkie sektory oraz SHA-256 z
    obrazem wzorcowym. Zaliczenie wymaga jednocześnie zakresu `$0B40`, poprawnej
    weryfikacji w programie i identycznych danych.
+
+## Zgodność STATUS i PERCOM w standardowym XF551
+
+1. Uruchomić stację od Zaxona ze standardowym ROM-em XF551.
+2. Uruchomić `xf551-density-diagnostic.xex` i dla DD sprawdzić dwa surowe
+   STATUS-y. Typowy stockowy ROM powinien pokazać `$80` po READ 1 oraz `$60`
+   po READ 4/256; wynik drugiego STATUS i PERCOM musi wynosić `$01`.
+3. Dla prawdziwego ED wynik READ 4 może być kontrolowanym timeoutem, natomiast
+   drugi STATUS musi zakończyć się `$01` i zachować pierwszy bajt `$80`.
+4. Włożyć kolejno nośniki SD, ED i DD, za każdym razem wykonując ponowny skan
+   w programie głównym.
+5. DD musi pozostać `PODWOJNA (DD)` także wtedy, gdy poprzednią operacją stacji
+   było ustawienie albo formatowanie ED.
+6. Przy sprzecznym PERCOM program nie może przejąć niezgodnej klasy gęstości.
+7. Każdy DD standardowego XF551 ma po skanie domyślnie pokazać 40T/1S,
+   720 sektorów i 180 KB, niezależnie od bitu dwóch stron w STATUS/PERCOM.
+8. Dla nośnika dwustronnego nacisnąć `G`; panel musi natychmiast pokazać
+   40T/2S, 1440 sektorów i 360 KB. Drugie `G` wraca do 180 KB, a zmiana źródła
+   lub ponowny skan również kasuje wybór 360 KB.
+9. Wykonać kopię obu odmian DD w obie strony i sprawdzić ponowny odczyt
+   wszystkich sektorów. Dla 360 KB przed każdą nową kopią wybrać `G`.
+10. Przełączyć tę samą dyskietkę 180 KB na HyperXF. Obecność starych nagłówków
+    dalszej strony nie może już powodować `KOD PROGRAMU: 3`; źródło ma pozostać
+    40T/1S i przejść do ekranu `PARAMETRY KOPII`.
 
 ## Ograniczenie Atari800
 
